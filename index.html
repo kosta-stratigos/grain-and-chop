@@ -3,19 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Granular Chop Lab</title>
+    <title>Grain and Chop</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <div class="app-shell">
       <header class="hero">
         <div class="hero-copy">
-          <p class="eyebrow">Web Audio Prototype</p>
-          <h1>Granular Chop Lab</h1>
-          <p class="subhead">Sample-based granular synth and rhythmic chopper.</p>
+          <h1>Grain and Chop</h1>
+          <p class="subhead">Patterned Granular Synthesizer and Sample Chopper</p>
         </div>
         <div class="hero-actions">
-          <button id="audio-toggle" class="primary">Start Audio</button>
           <label class="file-picker">
             <span>Load Sample</span>
             <input id="sample-input" type="file" accept="audio/*" />
@@ -42,13 +40,12 @@
               End
               <input id="region-end" type="range" min="0" max="1000" value="1000" />
             </label>
-            <button id="randomize-pattern">Randomize Pattern</button>
           </div>
         </section>
 
         <section class="panel">
           <div class="panel-head">
-            <h2>Playback</h2>
+            <h2>Track Settings</h2>
           </div>
           <div id="track-selector" class="track-selector"></div>
           <div class="control-grid">
@@ -114,47 +111,48 @@
           </div>
         </section>
 
-        <div class="sidebar-stack">
-          <section class="panel micro-panel">
-            <div class="panel-head">
-              <div class="panel-head-copy">
-                <h2>Musical Control</h2>
-              </div>
-            </div>
-            <div class="control-grid micro-control-grid">
-              <label class="compact-field span-2">
-                BPM
-                <div class="slider-row">
-                  <input id="bpm" type="range" min="60" max="180" value="112" />
-                  <span id="bpm-value" class="value-pill">112</span>
-                </div>
-              </label>
-              <div class="transport-single span-2">
-                <button id="transport-toggle" class="primary">Play</button>
-              </div>
-            </div>
-          </section>
+        <section class="panel mixer-panel">
+          <div class="panel-head">
+            <h2>Track Mixer</h2>
+          </div>
+          <div id="mixer-grid" class="mixer-grid"></div>
+        </section>
 
-          <section class="panel mixer-panel">
-            <div class="panel-head">
-              <h2>Mixer</h2>
+        <section class="panel micro-panel">
+          <div class="panel-head">
+            <div class="panel-head-copy">
+              <h2>Playback Control</h2>
             </div>
-            <div id="mixer-grid" class="mixer-grid"></div>
-          </section>
-        </div>
+          </div>
+          <div class="control-grid micro-control-grid">
+            <label class="compact-field span-2">
+              BPM
+              <div class="slider-row">
+                <input id="bpm" type="range" min="60" max="180" value="112" />
+                <span id="bpm-value" class="value-pill">112</span>
+              </div>
+            </label>
+            <div class="transport-single span-2">
+              <button id="transport-toggle" class="primary">Play</button>
+            </div>
+          </div>
+        </section>
 
         <section class="panel panel-wide">
           <div class="panel-head panel-head-pattern">
             <div class="panel-head-copy">
               <h2>Pattern</h2>
             </div>
-            <label class="compact-field pattern-steps-control">
-              Steps
-              <div class="slider-row">
-                <input id="step-count" type="range" min="8" max="16" value="16" />
-                <span id="step-count-value" class="value-pill">16</span>
-              </div>
-            </label>
+            <div class="pattern-head-actions">
+              <label class="compact-field pattern-steps-control">
+                Steps
+                <div class="slider-row">
+                  <input id="step-count" type="range" min="8" max="16" value="16" />
+                  <span id="step-count-value" class="value-pill">16</span>
+                </div>
+              </label>
+              <button id="randomize-pattern">Randomize</button>
+            </div>
           </div>
           <div id="pattern-grid" class="pattern-grid"></div>
         </section>

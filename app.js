@@ -764,14 +764,16 @@ function updateSelectedTrack(patch) {
   writeStoredSession();
 }
 
-ui.audioToggle.addEventListener("click", async () => {
-  try {
-    await ensureAudio();
-    ui.audioToggle.textContent = "Audio Ready";
-  } catch (error) {
-    setDiagnostics(`audio start failed: ${error.message}`, "error");
-  }
-});
+if (ui.audioToggle) {
+  ui.audioToggle.addEventListener("click", async () => {
+    try {
+      await ensureAudio();
+      ui.audioToggle.textContent = "Audio Ready";
+    } catch (error) {
+      setDiagnostics(`audio start failed: ${error.message}`, "error");
+    }
+  });
+}
 
 ui.sampleInput.addEventListener("change", async (event) => {
   const [file] = event.target.files ?? [];
