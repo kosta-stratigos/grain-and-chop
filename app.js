@@ -235,6 +235,7 @@ class TransportLayer {
   start() {
     if (this.intervalId) return;
     this.currentStep = 0;
+    resetTrackPlaybackState();
     this.nextStepTime = this.audioContext.currentTime + 0.03;
     this.intervalId = window.setInterval(() => this.tick(), this.lookaheadMs);
   }
@@ -243,6 +244,7 @@ class TransportLayer {
     window.clearInterval(this.intervalId);
     this.intervalId = null;
     this.currentStep = 0;
+    resetTrackPlaybackState();
     if (this.onStep) this.onStep(-1);
   }
 
@@ -259,7 +261,7 @@ class TransportLayer {
     this.state.tracks.forEach((track) => {
       if (!track.pattern[stepIndex]) return;
       if (!isTrackAudible(track)) return;
-      const sliceIndex = resolvePlaybackSliceIndex(track, stepIndex);
+      const sliceIndex = resolvePlaybackSliceIndex(track, { advance: true });
       indicateTrackPlayback(track, sliceIndex);
       this.playbackLayer.triggerTrack(track, when, sliceIndex);
     });
@@ -310,6 +312,7 @@ const state = {
   steps: 16,
   selectedTrackIndex: 0,
   tracks: Array.from({ length: TRACK_COUNT }, (_, index) => createTrack(index + 1)),
+  trackPlaybackState: Array.from({ length: TRACK_COUNT }, () => ({ sequentialIndex: 0, sweepIndex: 0, sweepDirection: 1 })),
   trackIndicators: Array.from({ length: TRACK_COUNT }, () => null),
   defaultSampleLoaded: false,
   currentSampleName: "",
@@ -327,6 +330,15 @@ function readStoredSession() {
   } catch (error) {
     return null;
   }
+}
+
+function resetTrackPlaybackState(trackIndex = null) {
+  if (Number.isInteger(trackIndex)) {
+    state.trackPlaybackState[trackIndex] = { sequentialIndex: 0, sweepIndex: 0, sweepDirection: 1 };
+    return;
+  }
+
+  state.trackPlaybackState = Array.from({ length: TRACK_COUNT }, () => ({ sequentialIndex: 0, sweepIndex: 0, sweepDirection: 1 }));
 }
 
 function normalizeTrack(index, source = {}) {
@@ -503,16 +515,36 @@ function formatModeLabel(mode) {
   return mode === "granular" ? "grain" : mode;
 }
 
-function resolvePlaybackSliceIndex(track, stepIndex = 0) {
+function resolvePlaybackSliceIndex(track, { advance = false } = {}) {
   const maxSliceIndex = Math.max(0, track.sliceCount - 1);
+  const playbackState = state.trackPlaybackState[track.id - 1] ?? { sequentialIndex: 0, sweepIndex: 0, sweepDirection: 1 };
 
   if (track.grainLocation === "fixed") return 0;
   if (track.grainLocation === "random") return Math.floor(Math.random() * (maxSliceIndex + 1));
-  if (track.grainLocation === "sequential") return stepIndex % (maxSliceIndex + 1);
 
-  const sweepPeriod = Math.max(1, maxSliceIndex * 2);
-  const position = stepIndex % sweepPeriod;
-  return position <= maxSliceIndex ? position : sweepPeriod - position;
+  if (track.grainLocation === "sequential") {
+    const index = Math.max(0, Math.min(maxSliceIndex, playbackState.sequentialIndex));
+    if (advance) playbackState.sequentialIndex = maxSliceIndex > 0 ? (index + 1) % (maxSliceIndex + 1) : 0;
+    state.trackPlaybackState[track.id - 1] = playbackState;
+    return index;
+  }
+
+  const index = Math.max(0, Math.min(maxSliceIndex, playbackState.sweepIndex));
+  if (advance && maxSliceIndex > 0) {
+    if (index >= maxSliceIndex) playbackState.sweepDirection = -1;
+    else if (index <= 0) playbackState.sweepDirection = 1;
+
+    playbackState.sweepIndex = index + playbackState.sweepDirection;
+    if (playbackState.sweepIndex < 0) {
+      playbackState.sweepIndex = 1;
+      playbackState.sweepDirection = 1;
+    } else if (playbackState.sweepIndex > maxSliceIndex) {
+      playbackState.sweepIndex = Math.max(0, maxSliceIndex - 1);
+      playbackState.sweepDirection = -1;
+    }
+  }
+  state.trackPlaybackState[track.id - 1] = playbackState;
+  return index;
 }
 
 function resolveGrainWindow(track, sliceIndex = null) {
@@ -861,6 +893,7 @@ function syncUi() {
 
 function updateSelectedTrack(patch) {
   Object.assign(getSelectedTrack(), patch);
+  if ("grainLocation" in patch || "sliceCount" in patch) resetTrackPlaybackState(state.selectedTrackIndex);
   syncUi();
   renderTrackSelector();
   renderMixer();
@@ -1012,7 +1045,7 @@ window.addEventListener("keydown", async (event) => {
       setDiagnostics(`${track.name} is ${track.muted ? "muted" : "not soloed"}.`, "warn");
       return;
     }
-    const sliceIndex = resolvePlaybackSliceIndex(track, 0);
+    const sliceIndex = resolvePlaybackSliceIndex(track, { advance: true });
     indicateTrackPlayback(track, sliceIndex);
     state.playback.triggerTrack(track, undefined, sliceIndex);
   } catch (error) {
