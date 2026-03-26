@@ -42,3 +42,4 @@ Then open [http://localhost:4173](http://localhost:4173).
   prototype but not ideal for large samples or polyphony-heavy sessions
 - timing is good enough for a prototype but still scheduled from the main thread
 - slice detection is manual and evenly divided, not transient-aware yet
+# grain-and-chop
