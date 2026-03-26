@@ -26,6 +26,8 @@ const ui = {
   reverse: document.querySelector("#reverse"),
   bpm: document.querySelector("#bpm"),
   bpmValue: document.querySelector("#bpm-value"),
+  swing: document.querySelector("#swing"),
+  swingValue: document.querySelector("#swing-value"),
   stepCount: document.querySelector("#step-count"),
   stepCountValue: document.querySelector("#step-count-value"),
   transportToggle: document.querySelector("#transport-toggle"),
@@ -254,7 +256,11 @@ class TransportLayer {
   }
 
   advance() {
-    this.nextStepTime += 60 / this.state.bpm / 4;
+    const baseStepDuration = 60 / this.state.bpm / 4;
+    const swingFactor = (this.state.swing / 100) * 0.5;
+    const isOffbeatStep = this.currentStep % 2 === 0;
+    const stepDuration = baseStepDuration * (isOffbeatStep ? 1 + swingFactor : 1 - swingFactor);
+    this.nextStepTime += stepDuration;
     this.currentStep = (this.currentStep + 1) % this.state.steps;
   }
 }
@@ -289,6 +295,7 @@ const state = {
   playback: null,
   transport: null,
   bpm: 112,
+  swing: 0,
   steps: 16,
   selectedTrackIndex: 0,
   tracks: Array.from({ length: TRACK_COUNT }, (_, index) => createTrack(index + 1)),
@@ -334,6 +341,7 @@ function normalizeTrack(index, source = {}) {
 function writeStoredSession() {
   const payload = {
     bpm: state.bpm,
+    swing: state.swing,
     steps: state.steps,
     selectedTrackIndex: state.selectedTrackIndex,
     fillDensity: state.fillDensity,
@@ -371,6 +379,7 @@ function applyStoredSession() {
   if (!stored) return;
 
   state.bpm = Number.isFinite(stored.bpm) ? Math.max(60, Math.min(180, stored.bpm)) : state.bpm;
+  state.swing = Number.isFinite(stored.swing) ? Math.max(0, Math.min(100, stored.swing)) : state.swing;
   state.steps = Number.isFinite(stored.steps) ? Math.max(MIN_STEPS, Math.min(MAX_STEPS, stored.steps)) : state.steps;
   state.selectedTrackIndex = Number.isFinite(stored.selectedTrackIndex)
     ? Math.max(0, Math.min(TRACK_COUNT - 1, stored.selectedTrackIndex))
@@ -786,6 +795,8 @@ function syncUi() {
   ui.reverse.checked = track.reverse;
   ui.bpm.value = String(state.bpm);
   ui.bpmValue.textContent = String(state.bpm);
+  ui.swing.value = String(state.swing);
+  ui.swingValue.textContent = `${state.swing}%`;
   ui.stepCount.value = String(state.steps);
   ui.stepCountValue.textContent = String(state.steps);
   ui.fillDensity.value = String(state.fillDensity);
@@ -891,6 +902,11 @@ ui.randomizePattern.addEventListener("click", () => {
 ui.mode.addEventListener("change", () => updateSelectedTrack({ mode: ui.mode.value }));
 ui.bpm.addEventListener("input", () => {
   state.bpm = Number(ui.bpm.value);
+  syncUi();
+  writeStoredSession();
+});
+ui.swing.addEventListener("input", () => {
+  state.swing = Math.max(0, Math.min(100, Number(ui.swing.value)));
   syncUi();
   writeStoredSession();
 });
