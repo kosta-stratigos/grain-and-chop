@@ -42,11 +42,6 @@
               End
               <input id="region-end" type="range" min="0" max="1000" value="1000" />
             </label>
-            <label>
-              Slices
-              <input id="slice-count" type="range" min="2" max="16" value="8" />
-              <span id="slice-count-value">8</span>
-            </label>
             <button id="randomize-pattern">Randomize Pattern</button>
           </div>
         </section>
@@ -70,6 +65,13 @@
                 <input id="reverse" type="checkbox" />
                 <span>Enabled</span>
               </span>
+            </label>
+            <label class="compact-field span-2">
+              Slices
+              <div class="slider-row">
+                <input id="slice-count" type="range" min="2" max="16" value="8" />
+                <span id="slice-count-value" class="value-pill">8</span>
+              </div>
             </label>
             <label class="compact-field span-2">
               Grain Size (ms)

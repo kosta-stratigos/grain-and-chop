@@ -42,7 +42,6 @@ class SampleLayer {
     this.reversedBuffer = null;
     this.regionStart = 0;
     this.regionEnd = 1;
-    this.sliceCount = 8;
   }
 
   async loadFile(file, audioContext) {
@@ -77,10 +76,6 @@ class SampleLayer {
     this.regionEnd = Math.max(this.regionStart + 0.01, Math.min(1, safeEnd));
   }
 
-  setSliceCount(count) {
-    this.sliceCount = count;
-  }
-
   getRegionBounds() {
     if (!this.buffer) return { startTime: 0, endTime: 0 };
     return {
@@ -89,11 +84,12 @@ class SampleLayer {
     };
   }
 
-  getSlices() {
+  getSlices(sliceCount = 8) {
     if (!this.buffer) return [];
+    const safeSliceCount = Math.max(2, Math.min(16, sliceCount));
     const { startTime, endTime } = this.getRegionBounds();
-    const length = (endTime - startTime) / this.sliceCount;
-    return Array.from({ length: this.sliceCount }, (_, index) => ({
+    const length = (endTime - startTime) / safeSliceCount;
+    return Array.from({ length: safeSliceCount }, (_, index) => ({
       index,
       start: startTime + index * length,
       duration: length,
@@ -168,7 +164,7 @@ class PlaybackLayer {
   }
 
   triggerSlice(track, when = this.audioContext.currentTime, sliceIndex = null) {
-    const slices = this.sampleLayer.getSlices();
+    const slices = this.sampleLayer.getSlices(track.sliceCount);
     if (!slices.length) return false;
     const index = sliceIndex ?? (track.id - 1) % slices.length;
     const slice = slices[index % slices.length];
@@ -243,7 +239,7 @@ class TransportLayer {
     this.state.tracks.forEach((track) => {
       if (!track.pattern[stepIndex]) return;
       if (!isTrackAudible(track)) return;
-      const sliceIndex = (stepIndex + track.id - 1) % this.state.sample.sliceCount;
+      const sliceIndex = (stepIndex + track.id - 1) % track.sliceCount;
       indicateTrackPlayback(track, sliceIndex);
       this.playbackLayer.triggerTrack(track, when, sliceIndex);
     });
@@ -274,6 +270,7 @@ function createTrack(id) {
     spray: 18,
     pitch: 0,
     chopGate: 70,
+    sliceCount: 8,
     pattern: Array.from({ length: 16 }, (_, index) => (index + id - 1) % 4 === 0),
   };
 }
@@ -318,6 +315,7 @@ function normalizeTrack(index, source = {}) {
     spray: Math.max(0, Math.min(100, Number(source.spray) || fallback.spray)),
     pitch: Math.max(-12, Math.min(12, Number(source.pitch) || fallback.pitch)),
     chopGate: Math.max(10, Math.min(100, Number(source.chopGate) || fallback.chopGate)),
+    sliceCount: Math.max(2, Math.min(16, Number(source.sliceCount) || fallback.sliceCount)),
     pattern: Array.from({ length: 16 }, (_, step) => Boolean(source.pattern?.[step] ?? fallback.pattern[step])),
   };
 }
@@ -330,7 +328,6 @@ function writeStoredSession() {
     sample: {
       regionStart: state.sample.regionStart,
       regionEnd: state.sample.regionEnd,
-      sliceCount: state.sample.sliceCount,
     },
     tracks: state.tracks.map((track) => ({
       id: track.id,
@@ -345,6 +342,7 @@ function writeStoredSession() {
       spray: track.spray,
       pitch: track.pitch,
       chopGate: track.chopGate,
+      sliceCount: track.sliceCount,
       pattern: track.pattern.slice(0, 16),
     })),
   };
@@ -371,13 +369,13 @@ function applyStoredSession() {
       Number.isFinite(stored.sample.regionStart) ? stored.sample.regionStart : 0,
       Number.isFinite(stored.sample.regionEnd) ? stored.sample.regionEnd : 1,
     );
-    if (Number.isFinite(stored.sample.sliceCount)) {
-      state.sample.setSliceCount(Math.max(2, Math.min(16, stored.sample.sliceCount)));
-    }
   }
 
   if (Array.isArray(stored.tracks)) {
-    state.tracks = Array.from({ length: TRACK_COUNT }, (_, index) => normalizeTrack(index, stored.tracks[index]));
+    const legacySliceCount = Number.isFinite(stored.sample?.sliceCount) ? Math.max(2, Math.min(16, stored.sample.sliceCount)) : 8;
+    state.tracks = Array.from({ length: TRACK_COUNT }, (_, index) =>
+      normalizeTrack(index, { ...stored.tracks[index], sliceCount: stored.tracks[index]?.sliceCount ?? legacySliceCount }),
+    );
   } else {
     const legacyTrack = normalizeTrack(0, {
       mode: stored.mode,
@@ -387,6 +385,7 @@ function applyStoredSession() {
       spray: stored.controls?.spray,
       pitch: stored.controls?.pitch,
       chopGate: stored.controls?.chopGate,
+      sliceCount: stored.sample?.sliceCount,
       pattern: stored.pattern,
     });
     state.tracks = [legacyTrack, ...Array.from({ length: TRACK_COUNT - 1 }, (_, index) => createTrack(index + 2))];
@@ -459,7 +458,7 @@ function indicateTrackPlayback(track, sliceIndex = null) {
   const trackIndex = track.id - 1;
 
   if (track.mode === "chop") {
-    const slices = state.sample.getSlices();
+    const slices = state.sample.getSlices(track.sliceCount);
     if (!slices.length) return;
     const resolvedIndex = sliceIndex ?? ((track.id - 1) % slices.length);
     const slice = slices[resolvedIndex % slices.length];
@@ -528,7 +527,7 @@ function drawWaveform() {
 
   ctx.strokeStyle = "rgba(255,184,77,0.6)";
   ctx.lineWidth = 1;
-  state.sample.getSlices().forEach((slice) => {
+  state.sample.getSlices(getSelectedTrack().sliceCount).forEach((slice) => {
     const x = (slice.start / state.sample.buffer.duration) * width;
     ctx.beginPath();
     ctx.moveTo(x, 0);
@@ -589,6 +588,7 @@ function renderTrackSelector() {
       renderTrackSelector();
       renderMixer();
       renderPattern();
+      drawWaveform();
       writeStoredSession();
     });
     chip.append(selectButton);
@@ -675,6 +675,7 @@ function renderPattern(activeStep = -1) {
       renderTrackSelector();
       renderMixer();
       renderPattern(activeStep);
+      drawWaveform();
       writeStoredSession();
     });
     row.append(label);
@@ -701,7 +702,7 @@ function renderPattern(activeStep = -1) {
 
 function syncUi() {
   const track = getSelectedTrack();
-  ui.sliceCountValue.textContent = String(state.sample.sliceCount);
+  ui.sliceCountValue.textContent = String(track.sliceCount);
   ui.mode.value = track.mode;
   ui.grainSize.value = String(track.grainSize);
   ui.grainSizeValue.textContent = String(track.grainSize);
@@ -721,7 +722,7 @@ function syncUi() {
   syncTransportButton();
   ui.regionStart.value = String(Math.round(state.sample.regionStart * 1000));
   ui.regionEnd.value = String(Math.round(state.sample.regionEnd * 1000));
-  ui.sliceCount.value = String(state.sample.sliceCount);
+  ui.sliceCount.value = String(track.sliceCount);
 
   if (state.sample.buffer) {
     const region = state.sample.getRegionBounds();
@@ -739,6 +740,7 @@ function updateSelectedTrack(patch) {
   renderTrackSelector();
   renderMixer();
   renderPattern();
+  drawWaveform();
   writeStoredSession();
 }
 
@@ -759,10 +761,8 @@ ui.sampleInput.addEventListener("change", async (event) => {
     setDiagnostics(`loading ${file.name}...`, "warn");
     const restoredStart = state.sample.regionStart;
     const restoredEnd = state.sample.regionEnd;
-    const restoredSlices = state.sample.sliceCount;
     await state.sample.loadFile(file, state.audioContext);
     state.sample.setRegion(restoredStart, restoredEnd);
-    state.sample.setSliceCount(restoredSlices);
     syncUi();
     drawWaveform();
     renderPattern();
@@ -795,10 +795,7 @@ ui.regionEnd.addEventListener("input", () => {
 });
 
 ui.sliceCount.addEventListener("input", () => {
-  state.sample.setSliceCount(Number(ui.sliceCount.value));
-  syncUi();
-  drawWaveform();
-  writeStoredSession();
+  updateSelectedTrack({ sliceCount: Number(ui.sliceCount.value) });
 });
 
 ui.randomizePattern.addEventListener("click", () => {
