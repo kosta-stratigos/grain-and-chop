@@ -136,6 +136,7 @@ button.primary {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   align-self: start;
+  align-items: stretch;
 }
 
 .panel {
@@ -148,10 +149,12 @@ button.primary {
 
 .micro-panel {
   grid-column: 1;
+  height: 100%;
 }
 
 .mixer-panel {
-  grid-column: 1 / -1;
+  grid-column: 2;
+  height: 100%;
 }
 
 .panel-head {
@@ -223,14 +226,14 @@ h2 {
 
 .mixer-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: 1fr;
+  gap: 6px;
 }
 
 .mixer-strip {
   display: grid;
-  gap: 6px;
-  padding: 10px;
+  gap: 4px;
+  padding: 8px;
   border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.04);
@@ -250,13 +253,13 @@ h2 {
 
 .mixer-name {
   color: var(--text);
-  font-size: 0.8rem;
+  font-size: 0.76rem;
   font-weight: 600;
 }
 
 .mixer-value {
   color: var(--muted);
-  font-size: 0.72rem;
+  font-size: 0.68rem;
 }
 
 .track-selector {
