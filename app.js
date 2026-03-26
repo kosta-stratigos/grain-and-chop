@@ -292,6 +292,7 @@ const state = {
   tracks: Array.from({ length: TRACK_COUNT }, (_, index) => createTrack(index + 1)),
   trackIndicators: Array.from({ length: TRACK_COUNT }, () => null),
   defaultSampleLoaded: false,
+  currentSampleName: "",
 };
 
 function getSelectedTrack() {
@@ -434,6 +435,7 @@ async function loadDefaultSample() {
     await state.sample.loadArrayBuffer(data, state.audioContext);
     state.sample.setRegion(restoredStart, restoredEnd);
     state.defaultSampleLoaded = true;
+    state.currentSampleName = DEFAULT_SAMPLE_NAME;
 
     syncUi();
     drawWaveform();
@@ -467,6 +469,10 @@ function hexToRgba(hex, alpha) {
   const g = (value >> 8) & 255;
   const b = value & 255;
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function formatModeLabel(mode) {
+  return mode === "granular" ? "grain" : mode;
 }
 
 function applyTrackColor(element, color) {
@@ -638,7 +644,7 @@ function renderTrackSelector() {
 
     const selectButton = document.createElement("button");
     selectButton.className = "track-chip-main";
-    selectButton.innerHTML = `<span class="track-chip-name">${track.name}</span><span class="track-chip-mode">${track.mode}${track.muted ? " • muted" : track.solo ? " • solo" : ""}</span>`;
+    selectButton.innerHTML = `<span class="track-chip-name">${track.name}</span><span class="track-chip-mode">${formatModeLabel(track.mode)}${track.muted ? " • muted" : track.solo ? " • solo" : ""}</span>`;
     selectButton.addEventListener("click", () => {
       state.selectedTrackIndex = index;
       syncUi();
@@ -726,7 +732,7 @@ function renderPattern(activeStep = -1) {
     const label = document.createElement("button");
     label.className = `pattern-row-label${trackIndex === state.selectedTrackIndex ? " active" : ""}`;
     applyTrackColor(label, track.color);
-    label.innerHTML = `<span class="pattern-row-name">${track.name}</span><span class="pattern-row-mode">${track.mode}${track.muted ? " • M" : track.solo ? " • S" : ""}</span>`;
+    label.innerHTML = `<span class="pattern-row-name">${track.name}</span><span class="pattern-row-mode">${formatModeLabel(track.mode)}${track.muted ? " • M" : track.solo ? " • S" : ""}</span>`;
     label.addEventListener("click", () => {
       state.selectedTrackIndex = trackIndex;
       syncUi();
@@ -784,14 +790,7 @@ function syncUi() {
 
   if (!ui.sampleStatus) return;
 
-  if (state.sample.buffer) {
-    const region = state.sample.getRegionBounds();
-    ui.sampleStatus.textContent = `${state.sample.buffer.duration.toFixed(2)}s loaded, region ${formatSeconds(
-      region.startTime,
-    )} to ${formatSeconds(region.endTime)}.`;
-  } else {
-    ui.sampleStatus.textContent = "Load an audio file to begin.";
-  }
+  ui.sampleStatus.textContent = state.sample.buffer ? state.currentSampleName : "";
 }
 
 function updateSelectedTrack(patch) {
@@ -825,6 +824,7 @@ ui.sampleInput.addEventListener("change", async (event) => {
     const restoredEnd = state.sample.regionEnd;
     await state.sample.loadFile(file, state.audioContext);
     state.defaultSampleLoaded = true;
+    state.currentSampleName = file.name;
     state.sample.setRegion(restoredStart, restoredEnd);
     syncUi();
     drawWaveform();
