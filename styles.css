@@ -48,7 +48,7 @@ select {
   border: 1px solid var(--line);
   background: var(--panel);
   backdrop-filter: blur(20px);
-  border-radius: 24px;
+  border-radius: 12px;
   box-shadow: 0 18px 60px rgba(0, 0, 0, 0.24);
 }
 
@@ -57,7 +57,7 @@ select {
   justify-content: space-between;
   align-items: center;
   gap: 16px;
-  padding: 9px 14px;
+  padding: 11px 18px;
   margin-bottom: 10px;
 }
 
@@ -114,7 +114,8 @@ button:hover,
   border-color: rgba(89, 208, 255, 0.5);
 }
 
-button.primary {
+button.primary,
+.file-picker.primary {
   background: linear-gradient(135deg, rgba(89, 208, 255, 0.18), rgba(255, 184, 77, 0.18));
 }
 
@@ -138,7 +139,7 @@ button.primary {
 }
 
 .panel {
-  padding: 14px;
+  padding: 18px;
 }
 
 .panel-wide {
@@ -443,25 +444,43 @@ input[type="range"] {
 
 .pattern-head-actions {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 
 .pattern-steps-control {
-  min-width: min(280px, 100%);
+  display: grid;
+  gap: 6px;
+  min-width: min(340px, 100%);
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.pattern-steps-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.pattern-steps-value {
+  color: var(--muted);
+  font-size: 0.72rem;
 }
 
 .pattern-grid {
   display: grid;
   gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
 }
 
 .pattern-row {
   display: grid;
-  grid-template-columns: 88px repeat(16, minmax(0, 1fr));
   gap: 8px;
   align-items: center;
+  min-width: max-content;
 }
 
 .pattern-row-label {
@@ -575,8 +594,14 @@ input[type="range"] {
     gap: 6px;
   }
 
-  .pattern-row {
-    grid-template-columns: 1fr repeat(8, minmax(0, 1fr));
+  .pattern-head-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    align-items: stretch;
+  }
+
+  .pattern-steps-control {
+    min-width: 100%;
   }
 
   .pattern-row-label {

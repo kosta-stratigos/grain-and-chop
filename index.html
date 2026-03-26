@@ -21,7 +21,7 @@
             <div class="panel-head-copy">
               <h2>Sample</h2>
             </div>
-            <label class="file-picker sample-file-picker">
+            <label class="file-picker primary sample-file-picker">
               <span>Load Sample</span>
               <input id="sample-input" type="file" accept="audio/*" />
             </label>
@@ -101,9 +101,6 @@
                 <span id="chop-gate-value" class="value-pill">70%</span>
               </div>
             </label>
-            <div class="action-row span-2">
-              <button id="trigger-now">Trigger Current Mode</button>
-            </div>
           </div>
         </section>
 
@@ -142,14 +139,14 @@
               <h2>Pattern</h2>
             </div>
             <div class="pattern-head-actions">
-              <label class="compact-field pattern-steps-control">
-                Steps
-                <div class="slider-row">
-                  <input id="step-count" type="range" min="8" max="16" value="16" />
-                  <span id="step-count-value" class="value-pill">16</span>
-                </div>
-              </label>
               <button id="randomize-pattern">Randomize</button>
+              <label class="pattern-steps-control">
+                <span class="pattern-steps-meta">
+                  <span>Steps</span>
+                  <span id="step-count-value" class="pattern-steps-value">16</span>
+                </span>
+                <input id="step-count" type="range" min="8" max="32" value="16" />
+              </label>
             </div>
           </div>
           <div id="pattern-grid" class="pattern-grid"></div>

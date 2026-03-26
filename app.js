@@ -22,7 +22,6 @@ const ui = {
   chopGate: document.querySelector("#chop-gate"),
   chopGateValue: document.querySelector("#chop-gate-value"),
   reverse: document.querySelector("#reverse"),
-  triggerNow: document.querySelector("#trigger-now"),
   bpm: document.querySelector("#bpm"),
   bpmValue: document.querySelector("#bpm-value"),
   stepCount: document.querySelector("#step-count"),
@@ -35,6 +34,8 @@ const ui = {
 const STORAGE_KEY = "granular-chop-lab:session";
 const DEFAULT_SAMPLE_URL = "./samples/bird_singing_-_amsel_-_blackbird_1_z9i.wav";
 const DEFAULT_SAMPLE_NAME = "bird_singing_-_amsel_-_blackbird_1_z9i.wav";
+const MIN_STEPS = 8;
+const MAX_STEPS = 32;
 const TRACK_COUNT = 4;
 const TRACK_COLORS = ["#59d0ff", "#ff8f5a", "#8dff7a", "#ffd34d"];
 
@@ -276,7 +277,7 @@ function createTrack(id) {
     pitch: 0,
     chopGate: 70,
     sliceCount: 8,
-    pattern: Array.from({ length: 16 }, (_, index) => (index + id - 1) % 4 === 0),
+    pattern: Array.from({ length: MAX_STEPS }, (_, index) => (index + id - 1) % 4 === 0),
   };
 }
 
@@ -322,7 +323,7 @@ function normalizeTrack(index, source = {}) {
     pitch: Math.max(-12, Math.min(12, Number(source.pitch) || fallback.pitch)),
     chopGate: Math.max(10, Math.min(100, Number(source.chopGate) || fallback.chopGate)),
     sliceCount: Math.max(2, Math.min(16, Number(source.sliceCount) || fallback.sliceCount)),
-    pattern: Array.from({ length: 16 }, (_, step) => Boolean(source.pattern?.[step] ?? fallback.pattern[step])),
+    pattern: Array.from({ length: MAX_STEPS }, (_, step) => Boolean(source.pattern?.[step] ?? fallback.pattern[step])),
   };
 }
 
@@ -349,7 +350,7 @@ function writeStoredSession() {
       pitch: track.pitch,
       chopGate: track.chopGate,
       sliceCount: track.sliceCount,
-      pattern: track.pattern.slice(0, 16),
+      pattern: track.pattern.slice(0, MAX_STEPS),
     })),
   };
 
@@ -365,7 +366,7 @@ function applyStoredSession() {
   if (!stored) return;
 
   state.bpm = Number.isFinite(stored.bpm) ? Math.max(60, Math.min(180, stored.bpm)) : state.bpm;
-  state.steps = Number.isFinite(stored.steps) ? Math.max(8, Math.min(16, stored.steps)) : state.steps;
+  state.steps = Number.isFinite(stored.steps) ? Math.max(MIN_STEPS, Math.min(MAX_STEPS, stored.steps)) : state.steps;
   state.selectedTrackIndex = Number.isFinite(stored.selectedTrackIndex)
     ? Math.max(0, Math.min(TRACK_COUNT - 1, stored.selectedTrackIndex))
     : 0;
@@ -720,6 +721,7 @@ function renderPattern(activeStep = -1) {
   state.tracks.forEach((track, trackIndex) => {
     const row = document.createElement("div");
     row.className = "pattern-row";
+    row.style.gridTemplateColumns = `88px repeat(${state.steps}, minmax(32px, 1fr))`;
 
     const label = document.createElement("button");
     label.className = `pattern-row-label${trackIndex === state.selectedTrackIndex ? " active" : ""}`;
@@ -861,7 +863,7 @@ ui.sliceCount.addEventListener("input", () => {
 
 ui.randomizePattern.addEventListener("click", () => {
   const track = getSelectedTrack();
-  track.pattern = Array.from({ length: 16 }, (_, index) => index < state.steps && Math.random() > 0.45);
+  track.pattern = Array.from({ length: MAX_STEPS }, (_, index) => index < state.steps && Math.random() > 0.45);
   renderPattern();
   writeStoredSession();
 });
@@ -873,7 +875,7 @@ ui.bpm.addEventListener("input", () => {
   writeStoredSession();
 });
 ui.stepCount.addEventListener("input", () => {
-  state.steps = Number(ui.stepCount.value);
+  state.steps = Math.max(MIN_STEPS, Math.min(MAX_STEPS, Number(ui.stepCount.value)));
   syncUi();
   renderPattern();
   writeStoredSession();
@@ -884,26 +886,6 @@ ui.spray.addEventListener("input", () => updateSelectedTrack({ spray: Number(ui.
 ui.pitch.addEventListener("input", () => updateSelectedTrack({ pitch: Number(ui.pitch.value) }));
 ui.chopGate.addEventListener("input", () => updateSelectedTrack({ chopGate: Number(ui.chopGate.value) }));
 ui.reverse.addEventListener("change", () => updateSelectedTrack({ reverse: ui.reverse.checked }));
-
-ui.triggerNow.addEventListener("click", async () => {
-  try {
-    await ensureAudio();
-    if (!state.sample.buffer) {
-      setDiagnostics("no sample loaded yet.", "warn");
-      return;
-    }
-    const track = getSelectedTrack();
-    if (!isTrackAudible(track)) {
-      setDiagnostics(`${track.name} is ${track.muted ? "muted" : "not soloed"}.`, "warn");
-      return;
-    }
-    indicateTrackPlayback(track);
-    const played = state.playback.triggerTrack(track);
-    setDiagnostics(played ? `${track.name} triggered.` : `${track.name} failed to schedule playback.`, played ? "ok" : "error");
-  } catch (error) {
-    setDiagnostics(`trigger failed: ${error.message}`, "error");
-  }
-});
 
 ui.transportToggle.addEventListener("click", async () => {
   try {
