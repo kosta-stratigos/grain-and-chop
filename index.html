@@ -111,32 +111,34 @@
           </div>
         </section>
 
-        <section class="panel mixer-panel">
-          <div class="panel-head">
-            <h2>Track Mixer</h2>
-          </div>
-          <div id="mixer-grid" class="mixer-grid"></div>
-        </section>
+        <div class="sidebar-stack">
+          <section class="panel mixer-panel">
+            <div class="panel-head">
+              <h2>Track Mixer</h2>
+            </div>
+            <div id="mixer-grid" class="mixer-grid"></div>
+          </section>
 
-        <section class="panel micro-panel">
-          <div class="panel-head">
-            <div class="panel-head-copy">
-              <h2>Playback Control</h2>
-            </div>
-          </div>
-          <div class="control-grid micro-control-grid">
-            <label class="compact-field span-2">
-              BPM
-              <div class="slider-row">
-                <input id="bpm" type="range" min="60" max="180" value="112" />
-                <span id="bpm-value" class="value-pill">112</span>
+          <section class="panel micro-panel">
+            <div class="panel-head">
+              <div class="panel-head-copy">
+                <h2>Playback Control</h2>
               </div>
-            </label>
-            <div class="transport-single span-2">
-              <button id="transport-toggle" class="primary">Play</button>
             </div>
-          </div>
-        </section>
+            <div class="control-grid micro-control-grid">
+              <label class="compact-field span-2">
+                BPM
+                <div class="slider-row">
+                  <input id="bpm" type="range" min="60" max="180" value="112" />
+                  <span id="bpm-value" class="value-pill">112</span>
+                </div>
+              </label>
+              <div class="transport-single span-2">
+                <button id="transport-toggle" class="primary">Play</button>
+              </div>
+            </div>
+          </section>
+        </div>
 
         <section class="panel panel-wide">
           <div class="panel-head panel-head-pattern">
