@@ -133,6 +133,7 @@ button.primary {
 
 .sidebar-stack {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   align-self: start;
 }
@@ -142,6 +143,14 @@ button.primary {
 }
 
 .panel-wide {
+  grid-column: 1 / -1;
+}
+
+.micro-panel {
+  grid-column: 1;
+}
+
+.mixer-panel {
   grid-column: 1 / -1;
 }
 
@@ -417,6 +426,26 @@ input[type="range"] {
   gap: 6px;
 }
 
+.transport-single {
+  display: flex;
+}
+
+.transport-single button {
+  flex: 1;
+}
+
+.micro-control-grid {
+  gap: 10px;
+}
+
+.panel-head-pattern {
+  align-items: flex-start;
+}
+
+.pattern-steps-control {
+  min-width: min(280px, 100%);
+}
+
 .pattern-grid {
   display: grid;
   gap: 8px;
@@ -481,6 +510,15 @@ input[type="range"] {
 @media (max-width: 920px) {
   .layout {
     grid-template-columns: 1fr;
+  }
+
+  .sidebar-stack {
+    grid-template-columns: 1fr;
+  }
+
+  .micro-panel,
+  .mixer-panel {
+    grid-column: auto;
   }
 
   .hero {

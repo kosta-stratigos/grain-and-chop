@@ -114,12 +114,14 @@
         </section>
 
         <div class="sidebar-stack">
-          <section class="panel">
+          <section class="panel micro-panel">
             <div class="panel-head">
-              <h2>3. Musical Control Layer</h2>
-              <p>Tempo, transport, keyboard trigger, and step pattern.</p>
+              <div class="panel-head-copy">
+                <h2>3. Musical Control Layer</h2>
+                <p>Compact transport for tempo and playback.</p>
+              </div>
             </div>
-            <div class="control-grid">
+            <div class="control-grid micro-control-grid">
               <label class="compact-field span-2">
                 BPM
                 <div class="slider-row">
@@ -127,22 +129,13 @@
                   <span id="bpm-value" class="value-pill">112</span>
                 </div>
               </label>
-              <label class="compact-field span-2">
-                Steps
-                <div class="slider-row">
-                  <input id="step-count" type="range" min="8" max="16" value="16" />
-                  <span id="step-count-value" class="value-pill">16</span>
-                </div>
-              </label>
-              <div class="transport-actions span-2">
-                <button id="play-sequence" class="primary">Play Sequence</button>
-                <button id="stop-sequence">Stop</button>
+              <div class="transport-single span-2">
+                <button id="transport-toggle" class="primary">Play</button>
               </div>
-              <p class="hint span-2">Press the space bar to trigger the current mode once.</p>
             </div>
           </section>
 
-          <section class="panel">
+          <section class="panel mixer-panel">
             <div class="panel-head">
               <h2>4. Mixer</h2>
               <p>Per-track volume for the shared sample engine.</p>
@@ -152,9 +145,18 @@
         </div>
 
         <section class="panel panel-wide">
-          <div class="panel-head">
-            <h2>Pattern</h2>
-            <p>Four tracks share the sample but keep independent playback settings and patterns.</p>
+          <div class="panel-head panel-head-pattern">
+            <div class="panel-head-copy">
+              <h2>Pattern</h2>
+              <p>Four tracks share the sample but keep independent playback settings and patterns.</p>
+            </div>
+            <label class="compact-field pattern-steps-control">
+              Steps
+              <div class="slider-row">
+                <input id="step-count" type="range" min="8" max="16" value="16" />
+                <span id="step-count-value" class="value-pill">16</span>
+              </div>
+            </label>
           </div>
           <div id="pattern-grid" class="pattern-grid"></div>
         </section>

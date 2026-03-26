@@ -27,8 +27,7 @@ const ui = {
   bpmValue: document.querySelector("#bpm-value"),
   stepCount: document.querySelector("#step-count"),
   stepCountValue: document.querySelector("#step-count-value"),
-  playSequence: document.querySelector("#play-sequence"),
-  stopSequence: document.querySelector("#stop-sequence"),
+  transportToggle: document.querySelector("#transport-toggle"),
   mixerGrid: document.querySelector("#mixer-grid"),
   patternGrid: document.querySelector("#pattern-grid"),
 };
@@ -475,6 +474,15 @@ function indicateTrackPlayback(track, sliceIndex = null) {
   setTrackIndicator(trackIndex, position, position + grainDuration, 160);
 }
 
+function isTransportRunning() {
+  return Boolean(state.transport?.intervalId);
+}
+
+function syncTransportButton() {
+  if (!ui.transportToggle) return;
+  ui.transportToggle.textContent = isTransportRunning() ? "Pause" : "Play";
+}
+
 function drawWaveform() {
   const canvas = ui.waveform;
   const ctx = canvas.getContext("2d");
@@ -710,6 +718,7 @@ function syncUi() {
   ui.bpmValue.textContent = String(state.bpm);
   ui.stepCount.value = String(state.steps);
   ui.stepCountValue.textContent = String(state.steps);
+  syncTransportButton();
   ui.regionStart.value = String(Math.round(state.sample.regionStart * 1000));
   ui.regionEnd.value = String(Math.round(state.sample.regionEnd * 1000));
   ui.sliceCount.value = String(state.sample.sliceCount);
@@ -838,24 +847,25 @@ ui.triggerNow.addEventListener("click", async () => {
   }
 });
 
-ui.playSequence.addEventListener("click", async () => {
+ui.transportToggle.addEventListener("click", async () => {
   try {
     await ensureAudio();
+    if (isTransportRunning()) {
+      state.transport.stop();
+      syncTransportButton();
+      setDiagnostics("sequence paused.", "warn");
+      return;
+    }
     if (!state.sample.buffer) {
       setDiagnostics("load a sample before starting the sequence.", "warn");
       return;
     }
     state.transport.start();
+    syncTransportButton();
     setDiagnostics(`sequence running at ${state.bpm} BPM across ${TRACK_COUNT} tracks.`, "ok");
   } catch (error) {
     setDiagnostics(`transport failed: ${error.message}`, "error");
   }
-});
-
-ui.stopSequence.addEventListener("click", () => {
-  if (!state.transport) return;
-  state.transport.stop();
-  setDiagnostics("sequence stopped.", "warn");
 });
 
 window.addEventListener("keydown", async (event) => {
@@ -880,6 +890,7 @@ window.addEventListener("keydown", async (event) => {
 });
 
 applyStoredSession();
+syncTransportButton();
 syncUi();
 drawWaveform();
 renderTrackSelector();
