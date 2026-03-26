@@ -467,18 +467,24 @@ input[type="range"] {
 }
 
 .fill-pattern-control {
-  flex: 0 1 220px;
-  min-width: 180px;
-  max-width: 250px;
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+  flex: 0 1 340px;
+  min-width: 260px;
+  max-width: 380px;
 }
 
 .fill-pattern-control button {
-  width: 100%;
+  min-height: 100%;
+  white-space: nowrap;
 }
 
 .fill-density-control {
   display: grid;
   gap: 6px;
+  min-width: 0;
 }
 
 .pattern-steps-control {
@@ -635,6 +641,10 @@ input[type="range"] {
   .pattern-steps-control {
     min-width: 100%;
     max-width: none;
+  }
+
+  .fill-pattern-control {
+    grid-template-columns: 1fr;
   }
 
   .pattern-row-label {
