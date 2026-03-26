@@ -13,6 +13,7 @@ const ui = {
   fillDensityValue: document.querySelector("#fill-density-value"),
   trackSelector: document.querySelector("#track-selector"),
   mode: document.querySelector("#mode"),
+  grainLocation: document.querySelector("#grain-location"),
   grainSize: document.querySelector("#grain-size"),
   grainSizeValue: document.querySelector("#grain-size-value"),
   grainDensity: document.querySelector("#grain-density"),
@@ -142,7 +143,7 @@ class PlaybackLayer {
     return true;
   }
 
-  triggerGranular(settings, when = this.audioContext.currentTime) {
+  triggerGranular(settings, when = this.audioContext.currentTime, sliceIndex = null) {
     const buffer = this.sampleLayer.buffer;
     if (!buffer) return false;
 
@@ -151,12 +152,18 @@ class PlaybackLayer {
     const regionDuration = Math.max(0.02, endTime - startTime);
     const grainDuration = Math.min(settings.grainSizeMs / 1000, regionDuration);
     const grainCount = Math.max(1, Math.round(settings.density * 0.35));
+    const slices = this.sampleLayer.getSlices(settings.sliceCount);
+    const resolvedSliceIndex = sliceIndex
+      ?? (settings.grainLocation === "random" && slices.length ? Math.floor(Math.random() * slices.length) : 0);
+    const anchorSlice = slices.length ? slices[resolvedSliceIndex % slices.length] : null;
     let triggered = false;
 
     for (let index = 0; index < grainCount; index += 1) {
-      const jitter = (Math.random() * 2 - 1) * settings.spray;
-      const randomPoint = startTime + Math.random() * Math.max(0.001, regionDuration - grainDuration);
-      const position = Math.max(startTime, Math.min(endTime - grainDuration, randomPoint + jitter));
+      const jitter = settings.grainLocation === "fixed" ? 0 : (Math.random() * 2 - 1) * settings.spray;
+      const sliceStart = anchorSlice?.start ?? startTime;
+      const sliceEnd = anchorSlice ? anchorSlice.start + anchorSlice.duration : endTime;
+      const maxPosition = Math.max(sliceStart, Math.min(endTime - grainDuration, sliceEnd - grainDuration));
+      const position = Math.max(startTime, Math.min(maxPosition, sliceStart + jitter));
       triggered =
         this.createVoice({
           when: when + index * (1 / Math.max(1, settings.density)),
@@ -201,8 +208,11 @@ class PlaybackLayer {
           pitch: track.pitch,
           reverse: track.reverse,
           level: track.volume,
+          sliceCount: track.sliceCount,
+          grainLocation: track.grainLocation,
         },
         when,
+        sliceIndex,
       );
     }
     return this.triggerSlice(track, when, sliceIndex);
@@ -249,7 +259,9 @@ class TransportLayer {
     this.state.tracks.forEach((track) => {
       if (!track.pattern[stepIndex]) return;
       if (!isTrackAudible(track)) return;
-      const sliceIndex = (stepIndex + track.id - 1) % track.sliceCount;
+      const sliceIndex = track.mode === "granular"
+        ? resolveGrainSliceIndex(track, stepIndex)
+        : (stepIndex + track.id - 1) % track.sliceCount;
       indicateTrackPlayback(track, sliceIndex);
       this.playbackLayer.triggerTrack(track, when, sliceIndex);
     });
@@ -279,6 +291,7 @@ function createTrack(id) {
     solo: false,
     volume: 0.85,
     reverse: false,
+    grainLocation: "fixed",
     grainSize: 110,
     grainDensity: 12,
     spray: 18,
@@ -328,6 +341,7 @@ function normalizeTrack(index, source = {}) {
     solo: Boolean(source.solo),
     volume: Math.max(0, Math.min(1, Number(source.volume) || fallback.volume)),
     reverse: Boolean(source.reverse),
+    grainLocation: ["fixed", "sequential", "sweep", "random"].includes(source.grainLocation) ? source.grainLocation : fallback.grainLocation,
     grainSize: Math.max(20, Math.min(350, Number(source.grainSize) || fallback.grainSize)),
     grainDensity: Math.max(2, Math.min(40, Number(source.grainDensity) || fallback.grainDensity)),
     spray: Math.max(0, Math.min(100, Number(source.spray) || fallback.spray)),
@@ -357,6 +371,7 @@ function writeStoredSession() {
       solo: track.solo,
       volume: track.volume,
       reverse: track.reverse,
+      grainLocation: track.grainLocation,
       grainSize: track.grainSize,
       grainDensity: track.grainDensity,
       spray: track.spray,
@@ -402,6 +417,7 @@ function applyStoredSession() {
     const legacyTrack = normalizeTrack(0, {
       mode: stored.mode,
       reverse: stored.controls?.reverse,
+      grainLocation: stored.controls?.grainLocation,
       grainSize: stored.controls?.grainSize,
       grainDensity: stored.controls?.grainDensity,
       spray: stored.controls?.spray,
@@ -489,6 +505,42 @@ function formatModeLabel(mode) {
   return mode === "granular" ? "grain" : mode;
 }
 
+function resolveGrainSliceIndex(track, stepIndex = 0) {
+  const maxSliceIndex = Math.max(0, track.sliceCount - 1);
+
+  if (track.grainLocation === "fixed") return 0;
+  if (track.grainLocation === "random") return Math.floor(Math.random() * (maxSliceIndex + 1));
+  if (track.grainLocation === "sequential") return stepIndex % (maxSliceIndex + 1);
+
+  const sweepPeriod = Math.max(1, maxSliceIndex * 2);
+  const position = stepIndex % sweepPeriod;
+  return position <= maxSliceIndex ? position : sweepPeriod - position;
+}
+
+function resolveGrainWindow(track, sliceIndex = null) {
+  const { startTime, endTime } = state.sample.getRegionBounds();
+  const regionDuration = Math.max(0.02, endTime - startTime);
+  const grainDuration = Math.min(track.grainSize / 1000, regionDuration);
+  const slices = state.sample.getSlices(track.sliceCount);
+  const resolvedSliceIndex = sliceIndex
+    ?? (track.grainLocation === "random" && slices.length ? Math.floor(Math.random() * slices.length) : 0);
+  const anchorSlice = slices.length ? slices[resolvedSliceIndex % slices.length] : null;
+  const sliceStart = anchorSlice?.start ?? startTime;
+  const sliceEnd = anchorSlice ? anchorSlice.start + anchorSlice.duration : endTime;
+  const maxPosition = Math.max(sliceStart, Math.min(endTime - grainDuration, sliceEnd - grainDuration));
+  const anchoredPosition = Math.max(startTime, Math.min(maxPosition, sliceStart));
+
+  return {
+    start: anchoredPosition,
+    end: Math.min(endTime, anchoredPosition + grainDuration),
+    grainDuration,
+    startTime,
+    endTime,
+    anchorSlice,
+    regionDuration,
+  };
+}
+
 function applyTrackColor(element, color) {
   element.style.setProperty("--track-color", color);
   element.style.setProperty("--track-color-soft", hexToRgba(color, 0.14));
@@ -523,11 +575,8 @@ function indicateTrackPlayback(track, sliceIndex = null) {
     return;
   }
 
-  const { startTime, endTime } = state.sample.getRegionBounds();
-  const regionDuration = Math.max(0.02, endTime - startTime);
-  const grainDuration = Math.min(track.grainSize / 1000, regionDuration);
-  const position = startTime + Math.random() * Math.max(0.001, regionDuration - grainDuration);
-  setTrackIndicator(trackIndex, position, position + grainDuration, 160);
+  const grainWindow = resolveGrainWindow(track, sliceIndex);
+  setTrackIndicator(trackIndex, grainWindow.start, grainWindow.end, 160);
 }
 
 function isTransportRunning() {
@@ -782,6 +831,7 @@ function syncUi() {
   const track = getSelectedTrack();
   ui.sliceCountValue.textContent = String(track.sliceCount);
   ui.mode.value = track.mode;
+  ui.grainLocation.value = track.grainLocation;
   ui.grainSize.value = String(track.grainSize);
   ui.grainSizeValue.textContent = String(track.grainSize);
   ui.grainDensity.value = String(track.grainDensity);
@@ -900,6 +950,7 @@ ui.randomizePattern.addEventListener("click", () => {
 });
 
 ui.mode.addEventListener("change", () => updateSelectedTrack({ mode: ui.mode.value }));
+ui.grainLocation.addEventListener("change", () => updateSelectedTrack({ grainLocation: ui.grainLocation.value }));
 ui.bpm.addEventListener("input", () => {
   state.bpm = Number(ui.bpm.value);
   syncUi();
