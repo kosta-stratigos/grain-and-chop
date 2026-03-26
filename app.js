@@ -502,6 +502,11 @@ function drawWaveform() {
   const step = Math.ceil(data.length / width);
   const centerY = height / 2;
   const waveformScale = height * 0.36;
+  const startX = state.sample.regionStart * width;
+  const endX = state.sample.regionEnd * width;
+
+  ctx.fillStyle = "rgba(255, 184, 77, 0.1)";
+  ctx.fillRect(startX, 0, endX - startX, height);
 
   ctx.strokeStyle = "rgba(210, 227, 255, 0.55)";
   ctx.lineWidth = 1;
@@ -520,48 +525,63 @@ function drawWaveform() {
   }
   ctx.stroke();
 
-  const startX = state.sample.regionStart * width;
-  const endX = state.sample.regionEnd * width;
-  ctx.fillStyle = "rgba(255, 184, 77, 0.12)";
-  ctx.fillRect(startX, 0, endX - startX, height);
-
-  ctx.strokeStyle = "rgba(255,184,77,0.6)";
-  ctx.lineWidth = 1;
-  state.sample.getSlices(getSelectedTrack().sliceCount).forEach((slice) => {
-    const x = (slice.start / state.sample.buffer.duration) * width;
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, height);
-    ctx.stroke();
-  });
-
   state.tracks.forEach((track, trackIndex) => {
     const laneTop = laneHeight * trackIndex;
+    const laneBottom = laneTop + laneHeight;
+    const laneMiddle = laneTop + laneHeight / 2;
+    const laneInset = 3;
+    const sliceHeight = Math.max(8, laneHeight - laneInset * 2);
 
-    ctx.fillStyle = trackIndex === state.selectedTrackIndex ? hexToRgba(track.color, 0.1) : hexToRgba(track.color, 0.04);
+    ctx.fillStyle = trackIndex === state.selectedTrackIndex ? hexToRgba(track.color, 0.12) : hexToRgba(track.color, 0.05);
     ctx.fillRect(0, laneTop, width, laneHeight);
 
-    ctx.strokeStyle = "rgba(255,255,255,0.08)";
+    ctx.strokeStyle = hexToRgba(track.color, trackIndex === state.selectedTrackIndex ? 0.8 : 0.42);
+    ctx.lineWidth = trackIndex === state.selectedTrackIndex ? 1.5 : 1;
+    state.sample.getSlices(track.sliceCount).forEach((slice, sliceIndex) => {
+      const x = (slice.start / state.sample.buffer.duration) * width;
+      ctx.beginPath();
+      ctx.moveTo(x, laneTop + laneInset);
+      ctx.lineTo(x, laneBottom - laneInset);
+      ctx.stroke();
+
+      if (sliceIndex === track.sliceCount - 1) {
+        const endMarkerX = ((slice.start + slice.duration) / state.sample.buffer.duration) * width;
+        ctx.beginPath();
+        ctx.moveTo(endMarkerX, laneTop + laneInset);
+        ctx.lineTo(endMarkerX, laneBottom - laneInset);
+        ctx.stroke();
+      }
+    });
+
+    ctx.strokeStyle = hexToRgba(track.color, trackIndex === state.selectedTrackIndex ? 0.38 : 0.22);
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(0, laneTop + laneHeight);
-    ctx.lineTo(width, laneTop + laneHeight);
+    ctx.moveTo(startX, laneMiddle);
+    ctx.lineTo(endX, laneMiddle);
     ctx.stroke();
 
     const indicator = state.trackIndicators[trackIndex];
     if (indicator) {
       const indicatorStartX = (indicator.start / state.sample.buffer.duration) * width;
       const indicatorEndX = (indicator.end / state.sample.buffer.duration) * width;
+      const indicatorWidth = Math.max(2, indicatorEndX - indicatorStartX);
       ctx.fillStyle = hexToRgba(track.color, trackIndex === state.selectedTrackIndex ? 0.3 : 0.18);
-      ctx.fillRect(indicatorStartX, laneTop, Math.max(2, indicatorEndX - indicatorStartX), laneHeight);
+      ctx.fillRect(indicatorStartX, laneTop + laneInset, indicatorWidth, sliceHeight);
       ctx.strokeStyle = track.color;
       ctx.lineWidth = trackIndex === state.selectedTrackIndex ? 2 : 1;
-      ctx.strokeRect(indicatorStartX, laneTop + 1, Math.max(2, indicatorEndX - indicatorStartX), laneHeight - 2);
+      ctx.strokeRect(indicatorStartX, laneTop + laneInset, indicatorWidth, sliceHeight);
     }
+
+    ctx.strokeStyle = "rgba(255,255,255,0.08)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, laneBottom);
+    ctx.lineTo(width, laneBottom);
+    ctx.stroke();
 
     ctx.fillStyle = track.color;
     ctx.font = "11px IBM Plex Sans";
-    ctx.fillText(track.name, 10, laneTop + 14);
+    ctx.fillText(`${track.name} · ${track.sliceCount}`, 10, laneTop + 14);
   });
 }
 
