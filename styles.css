@@ -457,9 +457,13 @@ input[type="range"] {
 .pattern-steps-control {
   display: grid;
   gap: 6px;
-  flex: 1 1 320px;
-  min-width: 0;
-  max-width: 420px;
+  flex: 0 1 180px;
+  min-width: 140px;
+  max-width: 210px;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--pane-radius);
+  background: rgba(255, 255, 255, 0.04);
   color: var(--muted);
   font-size: 0.78rem;
 }
@@ -610,6 +614,7 @@ input[type="range"] {
 
   .pattern-steps-control {
     min-width: 100%;
+    max-width: none;
   }
 
   .pattern-row-label {
