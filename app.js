@@ -9,6 +9,8 @@ const ui = {
   sliceCount: document.querySelector("#slice-count"),
   sliceCountValue: document.querySelector("#slice-count-value"),
   randomizePattern: document.querySelector("#randomize-pattern"),
+  fillDensity: document.querySelector("#fill-density"),
+  fillDensityValue: document.querySelector("#fill-density-value"),
   trackSelector: document.querySelector("#track-selector"),
   mode: document.querySelector("#mode"),
   grainSize: document.querySelector("#grain-size"),
@@ -293,6 +295,7 @@ const state = {
   trackIndicators: Array.from({ length: TRACK_COUNT }, () => null),
   defaultSampleLoaded: false,
   currentSampleName: "",
+  fillDensity: 50,
 };
 
 function getSelectedTrack() {
@@ -333,6 +336,7 @@ function writeStoredSession() {
     bpm: state.bpm,
     steps: state.steps,
     selectedTrackIndex: state.selectedTrackIndex,
+    fillDensity: state.fillDensity,
     sample: {
       regionStart: state.sample.regionStart,
       regionEnd: state.sample.regionEnd,
@@ -371,6 +375,7 @@ function applyStoredSession() {
   state.selectedTrackIndex = Number.isFinite(stored.selectedTrackIndex)
     ? Math.max(0, Math.min(TRACK_COUNT - 1, stored.selectedTrackIndex))
     : 0;
+  state.fillDensity = Number.isFinite(stored.fillDensity) ? Math.max(0, Math.min(100, stored.fillDensity)) : state.fillDensity;
 
   if (stored.sample) {
     state.sample.setRegion(
@@ -783,6 +788,8 @@ function syncUi() {
   ui.bpmValue.textContent = String(state.bpm);
   ui.stepCount.value = String(state.steps);
   ui.stepCountValue.textContent = String(state.steps);
+  ui.fillDensity.value = String(state.fillDensity);
+  ui.fillDensityValue.textContent = `${state.fillDensity}%`;
   syncTransportButton();
   ui.regionStart.value = String(Math.round(state.sample.regionStart * 1000));
   ui.regionEnd.value = String(Math.round(state.sample.regionEnd * 1000));
@@ -863,7 +870,20 @@ ui.sliceCount.addEventListener("input", () => {
 
 ui.randomizePattern.addEventListener("click", () => {
   const track = getSelectedTrack();
-  track.pattern = Array.from({ length: MAX_STEPS }, (_, index) => index < state.steps && Math.random() > 0.45);
+  const activeSteps = Math.round((state.steps * state.fillDensity) / 100);
+  const nextPattern = Array.from({ length: MAX_STEPS }, () => false);
+  const candidateSteps = Array.from({ length: state.steps }, (_, index) => index);
+
+  for (let index = candidateSteps.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [candidateSteps[index], candidateSteps[swapIndex]] = [candidateSteps[swapIndex], candidateSteps[index]];
+  }
+
+  candidateSteps.slice(0, activeSteps).forEach((stepIndex) => {
+    nextPattern[stepIndex] = true;
+  });
+
+  track.pattern = nextPattern;
   renderPattern();
   writeStoredSession();
 });
@@ -878,6 +898,11 @@ ui.stepCount.addEventListener("input", () => {
   state.steps = Math.max(MIN_STEPS, Math.min(MAX_STEPS, Number(ui.stepCount.value)));
   syncUi();
   renderPattern();
+  writeStoredSession();
+});
+ui.fillDensity.addEventListener("input", () => {
+  state.fillDensity = Math.max(0, Math.min(100, Number(ui.fillDensity.value)));
+  syncUi();
   writeStoredSession();
 });
 ui.grainSize.addEventListener("input", () => updateSelectedTrack({ grainSize: Number(ui.grainSize.value) }));

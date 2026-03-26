@@ -454,18 +454,37 @@ input[type="range"] {
   min-width: 0;
 }
 
+.fill-pattern-control,
 .pattern-steps-control {
   display: grid;
   gap: 6px;
-  flex: 0 1 180px;
-  min-width: 140px;
-  max-width: 210px;
   padding: 8px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--pane-radius);
   background: rgba(255, 255, 255, 0.04);
   color: var(--muted);
   font-size: 0.78rem;
+}
+
+.fill-pattern-control {
+  flex: 0 1 220px;
+  min-width: 180px;
+  max-width: 250px;
+}
+
+.fill-pattern-control button {
+  width: 100%;
+}
+
+.fill-density-control {
+  display: grid;
+  gap: 6px;
+}
+
+.pattern-steps-control {
+  flex: 0 1 180px;
+  min-width: 140px;
+  max-width: 210px;
 }
 
 .pattern-steps-meta {
@@ -612,6 +631,7 @@ input[type="range"] {
     justify-content: stretch;
   }
 
+  .fill-pattern-control,
   .pattern-steps-control {
     min-width: 100%;
     max-width: none;

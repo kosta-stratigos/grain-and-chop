@@ -140,7 +140,16 @@
               <h2>Pattern</h2>
             </div>
             <div class="pattern-head-actions">
-              <button id="randomize-pattern">Randomize</button>
+              <div class="fill-pattern-control">
+                <button id="randomize-pattern">Fill Pattern</button>
+                <label class="fill-density-control">
+                  <span class="pattern-steps-meta">
+                    <span>Fill Density</span>
+                    <span id="fill-density-value" class="pattern-steps-value">50%</span>
+                  </span>
+                  <input id="fill-density" type="range" min="0" max="100" value="50" />
+                </label>
+              </div>
               <label class="pattern-steps-control">
                 <span class="pattern-steps-meta">
                   <span>Steps</span>
