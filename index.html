@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Granular Chop Lab</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Web Audio Prototype</p>
+          <h1>Granular Chop Lab</h1>
+          <p class="subhead">Sample-based granular synth and rhythmic chopper.</p>
+        </div>
+        <div class="hero-actions">
+          <button id="audio-toggle" class="primary">Start Audio</button>
+          <label class="file-picker">
+            <span>Load Sample</span>
+            <input id="sample-input" type="file" accept="audio/*" />
+          </label>
+        </div>
+      </header>
+
+      <main class="layout">
+        <section class="panel panel-wide">
+          <div class="panel-head">
+            <div class="panel-head-copy">
+              <h2>1. Sample Layer</h2>
+              <p id="sample-status">Load an audio file to begin.</p>
+            </div>
+            <p id="diagnostics" class="diagnostics">Status: waiting for audio context.</p>
+          </div>
+          <canvas id="waveform" width="1200" height="168"></canvas>
+          <div class="region-grid">
+            <label>
+              Start
+              <input id="region-start" type="range" min="0" max="1000" value="0" />
+            </label>
+            <label>
+              End
+              <input id="region-end" type="range" min="0" max="1000" value="1000" />
+            </label>
+            <label>
+              Slices
+              <input id="slice-count" type="range" min="2" max="16" value="8" />
+              <span id="slice-count-value">8</span>
+            </label>
+            <button id="randomize-pattern">Randomize Pattern</button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>2. Playback Layer</h2>
+            <p>Shared sample engine. Edit the selected track below.</p>
+          </div>
+          <div id="track-selector" class="track-selector"></div>
+          <div class="control-grid">
+            <label class="compact-field">
+              Mode
+              <select id="mode">
+                <option value="granular">Granular</option>
+                <option value="chop">Chop</option>
+              </select>
+            </label>
+            <label class="compact-field">
+              Reverse
+              <span class="toggle-card">
+                <input id="reverse" type="checkbox" />
+                <span>Enabled</span>
+              </span>
+            </label>
+            <label class="compact-field span-2">
+              Grain Size (ms)
+              <div class="slider-row">
+                <input id="grain-size" type="range" min="20" max="350" value="110" />
+                <span id="grain-size-value" class="value-pill">110</span>
+              </div>
+            </label>
+            <label class="compact-field span-2">
+              Density (grains/s)
+              <div class="slider-row">
+                <input id="grain-density" type="range" min="2" max="40" value="12" />
+                <span id="grain-density-value" class="value-pill">12</span>
+              </div>
+            </label>
+            <label class="compact-field span-2">
+              Spray
+              <div class="slider-row">
+                <input id="spray" type="range" min="0" max="100" value="18" />
+                <span id="spray-value" class="value-pill">0.18</span>
+              </div>
+            </label>
+            <label class="compact-field span-2">
+              Pitch (semitones)
+              <div class="slider-row">
+                <input id="pitch" type="range" min="-12" max="12" value="0" />
+                <span id="pitch-value" class="value-pill">0</span>
+              </div>
+            </label>
+            <label class="compact-field span-2">
+              Chop Gate
+              <div class="slider-row">
+                <input id="chop-gate" type="range" min="10" max="100" value="70" />
+                <span id="chop-gate-value" class="value-pill">70%</span>
+              </div>
+            </label>
+            <div class="action-row span-2">
+              <button id="trigger-now">Trigger Current Mode</button>
+            </div>
+          </div>
+        </section>
+
+        <div class="sidebar-stack">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>3. Musical Control Layer</h2>
+              <p>Tempo, transport, keyboard trigger, and step pattern.</p>
+            </div>
+            <div class="control-grid">
+              <label class="compact-field span-2">
+                BPM
+                <div class="slider-row">
+                  <input id="bpm" type="range" min="60" max="180" value="112" />
+                  <span id="bpm-value" class="value-pill">112</span>
+                </div>
+              </label>
+              <label class="compact-field span-2">
+                Steps
+                <div class="slider-row">
+                  <input id="step-count" type="range" min="8" max="16" value="16" />
+                  <span id="step-count-value" class="value-pill">16</span>
+                </div>
+              </label>
+              <div class="transport-actions span-2">
+                <button id="play-sequence" class="primary">Play Sequence</button>
+                <button id="stop-sequence">Stop</button>
+              </div>
+              <p class="hint span-2">Press the space bar to trigger the current mode once.</p>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>4. Mixer</h2>
+              <p>Per-track volume for the shared sample engine.</p>
+            </div>
+            <div id="mixer-grid" class="mixer-grid"></div>
+          </section>
+        </div>
+
+        <section class="panel panel-wide">
+          <div class="panel-head">
+            <h2>Pattern</h2>
+            <p>Four tracks share the sample but keep independent playback settings and patterns.</p>
+          </div>
+          <div id="pattern-grid" class="pattern-grid"></div>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
