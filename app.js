@@ -259,9 +259,7 @@ class TransportLayer {
     this.state.tracks.forEach((track) => {
       if (!track.pattern[stepIndex]) return;
       if (!isTrackAudible(track)) return;
-      const sliceIndex = track.mode === "granular"
-        ? resolveGrainSliceIndex(track, stepIndex)
-        : (stepIndex + track.id - 1) % track.sliceCount;
+      const sliceIndex = resolvePlaybackSliceIndex(track, stepIndex);
       indicateTrackPlayback(track, sliceIndex);
       this.playbackLayer.triggerTrack(track, when, sliceIndex);
     });
@@ -505,7 +503,7 @@ function formatModeLabel(mode) {
   return mode === "granular" ? "grain" : mode;
 }
 
-function resolveGrainSliceIndex(track, stepIndex = 0) {
+function resolvePlaybackSliceIndex(track, stepIndex = 0) {
   const maxSliceIndex = Math.max(0, track.sliceCount - 1);
 
   if (track.grainLocation === "fixed") return 0;
@@ -1014,8 +1012,9 @@ window.addEventListener("keydown", async (event) => {
       setDiagnostics(`${track.name} is ${track.muted ? "muted" : "not soloed"}.`, "warn");
       return;
     }
-    indicateTrackPlayback(track);
-    state.playback.triggerTrack(track);
+    const sliceIndex = resolvePlaybackSliceIndex(track, 0);
+    indicateTrackPlayback(track, sliceIndex);
+    state.playback.triggerTrack(track, undefined, sliceIndex);
   } catch (error) {
     setDiagnostics(`keyboard trigger failed: ${error.message}`, "error");
   }
