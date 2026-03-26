@@ -33,6 +33,8 @@ const ui = {
 };
 
 const STORAGE_KEY = "granular-chop-lab:session";
+const DEFAULT_SAMPLE_URL = "./samples/bird_singing_-_amsel_-_blackbird_1_z9i.wav";
+const DEFAULT_SAMPLE_NAME = "bird_singing_-_amsel_-_blackbird_1_z9i.wav";
 const TRACK_COUNT = 4;
 const TRACK_COLORS = ["#59d0ff", "#ff8f5a", "#8dff7a", "#ffd34d"];
 
@@ -45,7 +47,10 @@ class SampleLayer {
   }
 
   async loadFile(file, audioContext) {
-    const data = await file.arrayBuffer();
+    return this.loadArrayBuffer(await file.arrayBuffer(), audioContext);
+  }
+
+  async loadArrayBuffer(data, audioContext) {
     this.buffer = await audioContext.decodeAudioData(data);
     this.reversedBuffer = this.createReversedBuffer(audioContext, this.buffer);
     this.regionStart = 0;
@@ -285,6 +290,7 @@ const state = {
   selectedTrackIndex: 0,
   tracks: Array.from({ length: TRACK_COUNT }, (_, index) => createTrack(index + 1)),
   trackIndicators: Array.from({ length: TRACK_COUNT }, () => null),
+  defaultSampleLoaded: false,
 };
 
 function getSelectedTrack() {
@@ -393,6 +399,7 @@ function applyStoredSession() {
 }
 
 function setDiagnostics(message, level = "warn") {
+  if (!ui.diagnostics) return;
   ui.diagnostics.textContent = `Status: ${message}`;
   ui.diagnostics.className = `diagnostics ${level}`;
 }
@@ -404,6 +411,35 @@ function hasSoloTrack() {
 function isTrackAudible(track) {
   if (track.muted) return false;
   return hasSoloTrack() ? track.solo : true;
+}
+
+async function loadDefaultSample() {
+  if (state.defaultSampleLoaded || state.sample.buffer) return;
+
+  try {
+    if (!state.audioContext) {
+      state.audioContext = createAudioContext();
+      state.playback = new PlaybackLayer(state.audioContext, state.sample);
+      state.transport = new TransportLayer(state.audioContext, state.playback, state);
+      state.transport.onStep = updateCurrentStep;
+    }
+
+    const response = await fetch(DEFAULT_SAMPLE_URL);
+    if (!response.ok) throw new Error(`request failed (${response.status})`);
+
+    const restoredStart = state.sample.regionStart;
+    const restoredEnd = state.sample.regionEnd;
+    const data = await response.arrayBuffer();
+    await state.sample.loadArrayBuffer(data, state.audioContext);
+    state.sample.setRegion(restoredStart, restoredEnd);
+    state.defaultSampleLoaded = true;
+
+    syncUi();
+    drawWaveform();
+    renderPattern();
+  } catch (error) {
+    console.error(`Default sample load failed: ${error.message}`);
+  }
 }
 
 function ensureAudio() {
@@ -744,6 +780,8 @@ function syncUi() {
   ui.regionEnd.value = String(Math.round(state.sample.regionEnd * 1000));
   ui.sliceCount.value = String(track.sliceCount);
 
+  if (!ui.sampleStatus) return;
+
   if (state.sample.buffer) {
     const region = state.sample.getRegionBounds();
     ui.sampleStatus.textContent = `${state.sample.buffer.duration.toFixed(2)}s loaded, region ${formatSeconds(
@@ -784,6 +822,7 @@ ui.sampleInput.addEventListener("change", async (event) => {
     const restoredStart = state.sample.regionStart;
     const restoredEnd = state.sample.regionEnd;
     await state.sample.loadFile(file, state.audioContext);
+    state.defaultSampleLoaded = true;
     state.sample.setRegion(restoredStart, restoredEnd);
     syncUi();
     drawWaveform();
@@ -798,7 +837,7 @@ ui.sampleInput.addEventListener("change", async (event) => {
     );
   } catch (error) {
     setDiagnostics(`load failed for ${file.name}: ${error.message}`, "error");
-    ui.sampleStatus.textContent = "This file could not be decoded by the browser.";
+    if (ui.sampleStatus) ui.sampleStatus.textContent = "This file could not be decoded by the browser.";
   }
 });
 
@@ -915,3 +954,4 @@ drawWaveform();
 renderTrackSelector();
 renderMixer();
 renderPattern();
+loadDefaultSample();

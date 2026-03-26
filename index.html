@@ -13,12 +13,6 @@
           <h1>Grain and Chop</h1>
           <p class="subhead">Patterned Granular Synthesizer and Sample Chopper</p>
         </div>
-        <div class="hero-actions">
-          <label class="file-picker">
-            <span>Load Sample</span>
-            <input id="sample-input" type="file" accept="audio/*" />
-          </label>
-        </div>
       </header>
 
       <main class="layout">
@@ -26,9 +20,11 @@
           <div class="panel-head">
             <div class="panel-head-copy">
               <h2>Sample</h2>
-              <p id="sample-status"></p>
             </div>
-            <p id="diagnostics" class="diagnostics">Status: waiting for audio context.</p>
+            <label class="file-picker sample-file-picker">
+              <span>Load Sample</span>
+              <input id="sample-input" type="file" accept="audio/*" />
+            </label>
           </div>
           <canvas id="waveform" width="1200" height="168"></canvas>
           <div class="region-grid">
