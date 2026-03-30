@@ -46,87 +46,102 @@
             <h2>Voice Settings</h2>
           </div>
           <div id="track-selector" class="track-selector"></div>
-          <div class="control-grid track-settings-grid">
-            <label class="compact-field">
-              Mode
-              <select id="mode">
-                <option value="granular">Grain</option>
-                <option value="chop">Chop</option>
-              </select>
-            </label>
-            <label class="compact-field">
-              Reverse
-              <span class="toggle-card">
-                <input id="reverse" type="checkbox" />
-                <span>Enabled</span>
-              </span>
-            </label>
-            <label class="compact-field">
-              Slices
-              <div class="slider-row">
-                <input id="slice-count" type="range" min="2" max="16" value="8" />
-                <span id="slice-count-value" class="value-pill">8</span>
+          <div class="control-stack track-settings-stack">
+            <section class="control-group" aria-labelledby="sample-group-title">
+              <div class="control-group-head">
+                <h3 id="sample-group-title">Sample</h3>
               </div>
-            </label>
-            <label class="compact-field">
-              Voice Location
-              <select id="grain-location">
-                <option value="fixed">Fixed</option>
-                <option value="sequential">Sequential</option>
-                <option value="sweep">Sweep</option>
-                <option value="random">Random</option>
-              </select>
-            </label>
-            <label class="compact-field" id="voice-placement-field">
-              Placement
-              <div class="slider-row">
-                <input id="voice-placement" type="range" min="0" max="100" value="50" />
-                <span id="voice-placement-value" class="value-pill">50%</span>
+              <div class="control-grid track-settings-grid">
+                <label class="compact-field">
+                  Slices
+                  <div class="slider-row">
+                    <input id="slice-count" type="range" min="2" max="16" value="8" />
+                    <span id="slice-count-value" class="value-pill">8</span>
+                  </div>
+                </label>
+                <label class="compact-field">
+                  Grain Size (ms)
+                  <div class="slider-row">
+                    <input id="grain-size" type="range" min="20" max="350" value="110" />
+                    <span id="grain-size-value" class="value-pill">110</span>
+                  </div>
+                </label>
+                <label class="compact-field">
+                  Density (grains/s)
+                  <div class="slider-row">
+                    <input id="grain-density" type="range" min="2" max="40" value="12" />
+                    <span id="grain-density-value" class="value-pill">12</span>
+                  </div>
+                </label>
+                <label class="compact-field">
+                  Spray
+                  <div class="slider-row">
+                    <input id="spray" type="range" min="0" max="100" value="18" />
+                    <span id="spray-value" class="value-pill">0.18</span>
+                  </div>
+                </label>
+                <label class="compact-field">
+                  Chop Gate
+                  <div class="slider-row">
+                    <input id="chop-gate" type="range" min="10" max="100" value="70" />
+                    <span id="chop-gate-value" class="value-pill">70%</span>
+                  </div>
+                </label>
               </div>
-            </label>
-            <label class="compact-field">
-              Voice Playback Mode
-              <select id="voice-playback-mode">
-                <option value="one-shot">One Shot</option>
-                <option value="loop">Loop</option>
-                <option value="smooth-loop">Smooth Loop</option>
-              </select>
-            </label>
-            <label class="compact-field">
-              Grain Size (ms)
-              <div class="slider-row">
-                <input id="grain-size" type="range" min="20" max="350" value="110" />
-                <span id="grain-size-value" class="value-pill">110</span>
+            </section>
+
+            <section class="control-group" aria-labelledby="voice-group-title">
+              <div class="control-group-head">
+                <h3 id="voice-group-title">Voice</h3>
               </div>
-            </label>
-            <label class="compact-field">
-              Density (grains/s)
-              <div class="slider-row">
-                <input id="grain-density" type="range" min="2" max="40" value="12" />
-                <span id="grain-density-value" class="value-pill">12</span>
+              <div class="control-grid track-settings-grid">
+                <label class="compact-field">
+                  Type
+                  <select id="mode">
+                    <option value="granular">Grain</option>
+                    <option value="chop">Chop</option>
+                  </select>
+                </label>
+                <label class="compact-field">
+                  Voice Location
+                  <select id="grain-location">
+                    <option value="fixed">Fixed</option>
+                    <option value="sequential">Sequential</option>
+                    <option value="sweep">Sweep</option>
+                    <option value="random">Random</option>
+                  </select>
+                </label>
+                <label class="compact-field" id="voice-placement-field">
+                  Voice Placement
+                  <div class="slider-row">
+                    <input id="voice-placement" type="range" min="0" max="100" value="50" />
+                    <span id="voice-placement-value" class="value-pill">50%</span>
+                  </div>
+                </label>
+                <label class="compact-field">
+                  Voice Playback Mode
+                  <select id="voice-playback-mode">
+                    <option value="one-shot">One Shot</option>
+                    <option value="loop">Loop</option>
+                    <option value="smooth-loop">Smooth Loop</option>
+                  </select>
+                </label>
+                <label class="compact-field compact-field-inline">
+                  <span>Reverse</span>
+                  <span class="checkbox-inline">
+                    <input id="reverse" type="checkbox" />
+                    <span>enabled</span>
+                  </span>
+                </label>
+                <label class="compact-field">
+                  Pitch (semitones)
+                  <div class="slider-row">
+                    <input id="pitch" type="range" min="-24" max="24" value="0" />
+                    <span id="pitch-value" class="value-pill">0</span>
+                  </div>
+                </label>
               </div>
-            </label>
-            <label class="compact-field">
-              Spray
-              <div class="slider-row">
-                <input id="spray" type="range" min="0" max="100" value="18" />
-                <span id="spray-value" class="value-pill">0.18</span>
-              </div>
-            </label>
-            <label class="compact-field">
-              Pitch (semitones)
-              <div class="slider-row">
-                <input id="pitch" type="range" min="-24" max="24" value="0" />
-                <span id="pitch-value" class="value-pill">0</span>
-              </div>
-            </label>
-            <label class="compact-field">
-              Chop Gate
-              <div class="slider-row">
-                <input id="chop-gate" type="range" min="10" max="100" value="70" />
-                <span id="chop-gate-value" class="value-pill">70%</span>
-              </div>
-            </label>
+            </section>
           </div>
         </section>
 

@@ -72,7 +72,8 @@ select {
 
 h1,
 h2,
-p {
+p,
+h3 {
   margin: 0;
 }
 
@@ -350,6 +351,26 @@ h2 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.track-settings-stack {
+  gap: 10px;
+}
+
+.control-group {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--pane-radius);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.control-group-head h3 {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
 .region-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   margin-top: 8px;
@@ -366,6 +387,14 @@ label,
 .compact-field {
   gap: 6px;
   align-content: start;
+}
+
+.compact-field-inline {
+  grid-template-columns: auto auto;
+  justify-content: start;
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
 }
 
 .span-2 {
@@ -420,6 +449,17 @@ input[type="range"] {
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.05);
   color: var(--text);
+}
+
+.checkbox-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+}
+
+.checkbox-inline input[type="checkbox"] {
+  margin: 0;
 }
 
 .toggle {
@@ -690,6 +730,7 @@ input[type="range"] {
   opacity: 0.45;
 }
 
-.compact-field.is-disabled input {
+.compact-field.is-disabled input,
+.compact-field.is-disabled .value-pill {
   pointer-events: none;
 }
