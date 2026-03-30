@@ -662,9 +662,9 @@ function getWaveformViewport() {
   };
 }
 
-function timeToViewportX(time, viewportStart, viewportEnd, width) {
+function timeToViewportX(time, viewportStart, viewportEnd, viewportLeft, viewportWidth) {
   const normalized = (time - viewportStart) / Math.max(0.0001, viewportEnd - viewportStart);
-  return normalized * width;
+  return viewportLeft + normalized * viewportWidth;
 }
 
 function drawWaveform() {
@@ -672,6 +672,13 @@ function drawWaveform() {
   const ctx = canvas.getContext("2d");
   const { width, height } = canvas;
   const laneHeight = height / TRACK_COUNT;
+  const labelLeft = 10;
+  const labelWidth = 84;
+  const viewportGap = 10;
+  const viewportPaddingRight = 12;
+  const viewportLeft = labelLeft + labelWidth + viewportGap;
+  const viewportRight = width - viewportPaddingRight;
+  const viewportWidth = Math.max(1, viewportRight - viewportLeft);
   ctx.clearRect(0, 0, width, height);
   ctx.fillStyle = "rgba(255,255,255,0.03)";
   ctx.fillRect(0, 0, width, height);
@@ -679,7 +686,7 @@ function drawWaveform() {
   if (!state.sample.buffer) {
     ctx.fillStyle = "rgba(232,242,255,0.65)";
     ctx.font = '18px "IBM Plex Sans", "Avenir Next", sans-serif';
-    ctx.fillText("Waveform will appear here after you load a sample.", 32, height / 2);
+    ctx.fillText("Waveform will appear here after you load a sample.", viewportLeft, height / 2);
     return;
   }
 
@@ -689,7 +696,7 @@ function drawWaveform() {
   const viewportStartSample = Math.max(0, Math.floor(viewport.startTime * state.sample.buffer.sampleRate));
   const viewportEndSample = Math.min(data.length, Math.ceil(viewport.endTime * state.sample.buffer.sampleRate));
   const viewportSampleLength = Math.max(1, viewportEndSample - viewportStartSample);
-  const samplesPerPixel = Math.max(1, Math.ceil(viewportSampleLength / width));
+  const samplesPerPixel = Math.max(1, Math.ceil(viewportSampleLength / viewportWidth));
   let peak = 0.0001;
 
   for (let sampleIndex = viewportStartSample; sampleIndex < viewportEndSample; sampleIndex += 1) {
@@ -698,8 +705,13 @@ function drawWaveform() {
 
   const centerY = height / 2;
   const waveformScale = height * 0.4 / peak;
-  const regionStartX = Math.max(0, timeToViewportX(startTime, viewport.startTime, viewport.endTime, width));
-  const regionEndX = Math.min(width, timeToViewportX(endTime, viewport.startTime, viewport.endTime, width));
+  const regionStartX = Math.max(viewportLeft, timeToViewportX(startTime, viewport.startTime, viewport.endTime, viewportLeft, viewportWidth));
+  const regionEndX = Math.min(viewportRight, timeToViewportX(endTime, viewport.startTime, viewport.endTime, viewportLeft, viewportWidth));
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(viewportLeft, 0, viewportWidth, height);
+  ctx.clip();
 
   ctx.fillStyle = "rgba(255, 184, 77, 0.1)";
   ctx.fillRect(regionStartX, 0, Math.max(0, regionEndX - regionStartX), height);
@@ -707,7 +719,8 @@ function drawWaveform() {
   ctx.strokeStyle = "rgba(210, 227, 255, 0.55)";
   ctx.lineWidth = 1;
   ctx.beginPath();
-  for (let x = 0; x < width; x += 1) {
+  for (let x = 0; x < viewportWidth; x += 1) {
+    const canvasX = viewportLeft + x;
     const sliceStart = viewportStartSample + x * samplesPerPixel;
     const sliceEnd = Math.min(viewportEndSample, sliceStart + samplesPerPixel);
     let min = 1;
@@ -718,8 +731,8 @@ function drawWaveform() {
       if (sample < min) min = sample;
       if (sample > max) max = sample;
     }
-    ctx.moveTo(x, centerY + min * waveformScale);
-    ctx.lineTo(x, centerY + max * waveformScale);
+    ctx.moveTo(canvasX, centerY + min * waveformScale);
+    ctx.lineTo(canvasX, centerY + max * waveformScale);
   }
   ctx.stroke();
 
@@ -731,21 +744,21 @@ function drawWaveform() {
     const sliceHeight = Math.max(8, laneHeight - laneInset * 2);
 
     ctx.fillStyle = trackIndex === state.selectedTrackIndex ? hexToRgba(track.color, 0.12) : hexToRgba(track.color, 0.05);
-    ctx.fillRect(0, laneTop, width, laneHeight);
+    ctx.fillRect(viewportLeft, laneTop, viewportWidth, laneHeight);
 
     ctx.strokeStyle = hexToRgba(track.color, trackIndex === state.selectedTrackIndex ? 0.8 : 0.42);
     ctx.lineWidth = trackIndex === state.selectedTrackIndex ? 1.5 : 1;
     state.sample.getSlices(track.sliceCount).forEach((slice, sliceIndex) => {
-      const sliceX = timeToViewportX(slice.start, viewport.startTime, viewport.endTime, width);
-      if (sliceX < 0 || sliceX > width) return;
+      const sliceX = timeToViewportX(slice.start, viewport.startTime, viewport.endTime, viewportLeft, viewportWidth);
+      if (sliceX < viewportLeft || sliceX > viewportRight) return;
       ctx.beginPath();
       ctx.moveTo(sliceX, laneTop + laneInset);
       ctx.lineTo(sliceX, laneBottom - laneInset);
       ctx.stroke();
 
       if (sliceIndex === track.sliceCount - 1) {
-        const endMarkerX = timeToViewportX(slice.start + slice.duration, viewport.startTime, viewport.endTime, width);
-        if (endMarkerX >= 0 && endMarkerX <= width) {
+        const endMarkerX = timeToViewportX(slice.start + slice.duration, viewport.startTime, viewport.endTime, viewportLeft, viewportWidth);
+        if (endMarkerX >= viewportLeft && endMarkerX <= viewportRight) {
           ctx.beginPath();
           ctx.moveTo(endMarkerX, laneTop + laneInset);
           ctx.lineTo(endMarkerX, laneBottom - laneInset);
@@ -763,8 +776,8 @@ function drawWaveform() {
 
     const indicator = state.trackIndicators[trackIndex];
     if (indicator) {
-      const indicatorStartX = Math.max(0, timeToViewportX(indicator.start, viewport.startTime, viewport.endTime, width));
-      const indicatorEndX = Math.min(width, timeToViewportX(indicator.end, viewport.startTime, viewport.endTime, width));
+      const indicatorStartX = Math.max(viewportLeft, timeToViewportX(indicator.start, viewport.startTime, viewport.endTime, viewportLeft, viewportWidth));
+      const indicatorEndX = Math.min(viewportRight, timeToViewportX(indicator.end, viewport.startTime, viewport.endTime, viewportLeft, viewportWidth));
       const indicatorWidth = Math.max(2, indicatorEndX - indicatorStartX);
       ctx.fillStyle = hexToRgba(track.color, trackIndex === state.selectedTrackIndex ? 0.3 : 0.18);
       ctx.fillRect(indicatorStartX, laneTop + laneInset, indicatorWidth, sliceHeight);
@@ -772,6 +785,14 @@ function drawWaveform() {
       ctx.lineWidth = trackIndex === state.selectedTrackIndex ? 2 : 1;
       ctx.strokeRect(indicatorStartX, laneTop + laneInset, indicatorWidth, sliceHeight);
     }
+  });
+
+  ctx.restore();
+
+  state.tracks.forEach((track, trackIndex) => {
+    const laneTop = laneHeight * trackIndex;
+    const laneBottom = laneTop + laneHeight;
+    const laneMiddle = laneTop + laneHeight / 2;
 
     ctx.strokeStyle = "rgba(255,255,255,0.08)";
     ctx.lineWidth = 1;
@@ -781,8 +802,9 @@ function drawWaveform() {
     ctx.stroke();
 
     ctx.fillStyle = track.color;
-    ctx.font = '600 11px "IBM Plex Sans", "Avenir Next", sans-serif';
-    ctx.fillText(track.name, 10, laneTop + 14);
+    ctx.font = '400 11px "IBM Plex Sans", "Avenir Next", sans-serif';
+    ctx.textBaseline = "middle";
+    ctx.fillText(track.name, labelLeft, laneMiddle);
   });
 }
 
