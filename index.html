@@ -42,7 +42,7 @@
 
         <section class="panel">
           <div class="panel-head">
-            <h2>Track Settings</h2>
+            <h2>Voice Settings</h2>
           </div>
           <div id="track-selector" class="track-selector"></div>
           <div class="control-grid track-settings-grid">
@@ -100,7 +100,7 @@
             <label class="compact-field">
               Pitch (semitones)
               <div class="slider-row">
-                <input id="pitch" type="range" min="-12" max="12" value="0" />
+                <input id="pitch" type="range" min="-24" max="24" value="0" />
                 <span id="pitch-value" class="value-pill">0</span>
               </div>
             </label>
@@ -117,8 +117,15 @@
         <div class="sidebar-stack">
           <section class="panel mixer-panel">
             <div class="panel-head">
-              <h2>Track Mixer</h2>
+              <h2>Output Mix</h2>
             </div>
+            <label class="compact-field mix-volume-control">
+              Mix Volume
+              <div class="slider-row">
+                <input id="mix-volume" type="range" min="0" max="100" value="90" />
+                <span id="mix-volume-value" class="value-pill">90%</span>
+              </div>
+            </label>
             <div id="mixer-grid" class="mixer-grid"></div>
           </section>
 

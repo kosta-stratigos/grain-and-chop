@@ -229,6 +229,10 @@ h2 {
   gap: 6px;
 }
 
+.mix-volume-control {
+  margin-bottom: 10px;
+}
+
 .mixer-strip {
   display: grid;
   gap: 4px;
@@ -264,7 +268,7 @@ h2 {
 .track-selector {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px;
   margin-bottom: 10px;
 }
 
@@ -272,9 +276,11 @@ h2 {
   border-radius: var(--pane-radius);
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.04);
-  padding: 8px 10px;
+  padding: 6px 8px;
   display: grid;
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
 }
 
 .track-chip.active {
@@ -292,38 +298,40 @@ h2 {
 
 .track-chip-main {
   display: grid;
-  gap: 2px;
+  gap: 1px;
   text-align: left;
   padding: 0;
   border: 0;
   background: transparent;
   border-radius: 0;
+  min-width: 0;
 }
 
 .track-chip-name {
   display: block;
   color: var(--text);
-  font-size: 0.84rem;
+  font-size: 0.78rem;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .track-chip-mode {
   display: block;
   color: var(--muted);
-  font-size: 0.72rem;
-  margin-top: 2px;
+  font-size: 0.68rem;
 }
 
 .track-chip-actions {
   display: flex;
-  gap: 6px;
+  gap: 4px;
+  align-items: center;
 }
 
 .track-mini {
   min-width: 0;
-  padding: 5px 8px;
+  padding: 4px 7px;
   border-radius: var(--pane-radius);
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   line-height: 1;
 }
 

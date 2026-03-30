@@ -31,6 +31,8 @@ const ui = {
   swingValue: document.querySelector("#swing-value"),
   trackRate: document.querySelector("#track-rate"),
   transportToggle: document.querySelector("#transport-toggle"),
+  mixVolume: document.querySelector("#mix-volume"),
+  mixVolumeValue: document.querySelector("#mix-volume-value"),
   mixerGrid: document.querySelector("#mixer-grid"),
   patternGrid: document.querySelector("#pattern-grid"),
 };
@@ -323,6 +325,7 @@ const state = {
   defaultSampleLoaded: false,
   currentSampleName: "",
   fillDensity: 50,
+  mixVolume: 0.9,
 };
 
 function getSelectedTrack() {
@@ -362,7 +365,7 @@ function normalizeTrack(index, source = {}) {
     grainSize: Math.max(20, Math.min(350, Number(source.grainSize) || fallback.grainSize)),
     grainDensity: Math.max(2, Math.min(40, Number(source.grainDensity) || fallback.grainDensity)),
     spray: Math.max(0, Math.min(100, Number(source.spray) || fallback.spray)),
-    pitch: Math.max(-12, Math.min(12, Number(source.pitch) || fallback.pitch)),
+    pitch: Math.max(-24, Math.min(24, Number(source.pitch) || fallback.pitch)),
     chopGate: Math.max(10, Math.min(100, Number(source.chopGate) || fallback.chopGate)),
     sliceCount: Math.max(2, Math.min(16, Number(source.sliceCount) || fallback.sliceCount)),
     pattern: Array.from({ length: MAX_PATTERN_CELLS }, (_, step) => Boolean(source.pattern?.[step] ?? fallback.pattern[step])),
@@ -376,6 +379,7 @@ function writeStoredSession() {
     steps: state.steps,
     selectedTrackIndex: state.selectedTrackIndex,
     fillDensity: state.fillDensity,
+    mixVolume: state.mixVolume,
     sample: {
       regionStart: state.sample.regionStart,
       regionEnd: state.sample.regionEnd,
@@ -418,6 +422,7 @@ function applyStoredSession() {
     ? Math.max(0, Math.min(TRACK_COUNT - 1, stored.selectedTrackIndex))
     : 0;
   state.fillDensity = Number.isFinite(stored.fillDensity) ? Math.max(0, Math.min(100, stored.fillDensity)) : state.fillDensity;
+  state.mixVolume = Number.isFinite(stored.mixVolume) ? Math.max(0, Math.min(1, stored.mixVolume)) : state.mixVolume;
 
   if (stored.sample) {
     state.sample.setRegion(
@@ -473,6 +478,7 @@ async function loadDefaultSample() {
       state.playback = new PlaybackLayer(state.audioContext, state.sample);
       state.transport = new TransportLayer(state.audioContext, state.playback, state);
       state.transport.onStep = updateCurrentStep;
+      state.playback.output.gain.value = state.mixVolume;
     }
 
     const response = await fetch(DEFAULT_SAMPLE_URL);
@@ -500,6 +506,7 @@ function ensureAudio() {
     state.playback = new PlaybackLayer(state.audioContext, state.sample);
     state.transport = new TransportLayer(state.audioContext, state.playback, state);
     state.transport.onStep = updateCurrentStep;
+    state.playback.output.gain.value = state.mixVolume;
   }
   return state.audioContext.resume().then(() => {
     setDiagnostics(`audio context running (${state.audioContext.state}).`, "ok");
@@ -759,7 +766,7 @@ function renderTrackSelector() {
 
     const selectButton = document.createElement("button");
     selectButton.className = "track-chip-main";
-    selectButton.innerHTML = `<span class="track-chip-name">${track.name}</span><span class="track-chip-mode">${formatModeLabel(track.mode)}${track.muted ? " • muted" : track.solo ? " • solo" : ""}</span>`;
+    selectButton.innerHTML = `<span class="track-chip-name">${track.name}</span><span class="track-chip-mode">${formatModeLabel(track.mode)}</span>`;
     selectButton.addEventListener("click", () => {
       state.selectedTrackIndex = index;
       syncUi();
@@ -904,6 +911,8 @@ function syncUi() {
   ui.swingValue.textContent = `${state.swing}%`;
   ui.trackRate.value = track.rate;
   ui.fillDensity.value = String(state.fillDensity);
+  ui.mixVolume.value = String(Math.round(state.mixVolume * 100));
+  ui.mixVolumeValue.textContent = `${Math.round(state.mixVolume * 100)}%`;
   ui.fillDensityValue.textContent = `${state.fillDensity}%`;
   syncTransportButton();
   ui.regionStart.value = String(Math.round(state.sample.regionStart * 1000));
@@ -1020,6 +1029,12 @@ ui.swing.addEventListener("input", () => {
 });
 ui.fillDensity.addEventListener("input", () => {
   state.fillDensity = Math.max(0, Math.min(100, Number(ui.fillDensity.value)));
+  syncUi();
+  writeStoredSession();
+});
+ui.mixVolume.addEventListener("input", () => {
+  state.mixVolume = Math.max(0, Math.min(1, Number(ui.mixVolume.value) / 100));
+  if (state.playback) state.playback.output.gain.value = state.mixVolume;
   syncUi();
   writeStoredSession();
 });
