@@ -720,9 +720,10 @@ function drawWaveform() {
   const ctx = canvas.getContext("2d");
   const { width, height } = canvas;
   const laneHeight = height / TRACK_COUNT;
-  const labelLeft = 10;
+  const outerPadding = 20;
+  const labelLeft = outerPadding;
   const labelWidth = 82;
-  const viewportGap = 20;
+  const viewportGap = outerPadding;
   const viewportPaddingRight = 0;
   const viewportLeft = labelLeft + labelWidth + viewportGap;
   const viewportRight = width - viewportPaddingRight;
