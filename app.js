@@ -15,6 +15,10 @@ const ui = {
   trackSelector: document.querySelector("#track-selector"),
   mode: document.querySelector("#mode"),
   grainLocation: document.querySelector("#grain-location"),
+  voicePlacementField: document.querySelector("#voice-placement-field"),
+  voicePlacement: document.querySelector("#voice-placement"),
+  voicePlacementValue: document.querySelector("#voice-placement-value"),
+  voicePlaybackMode: document.querySelector("#voice-playback-mode"),
   grainSize: document.querySelector("#grain-size"),
   grainSizeValue: document.querySelector("#grain-size-value"),
   grainDensity: document.querySelector("#grain-density"),
@@ -121,7 +125,7 @@ class PlaybackLayer {
     this.output.connect(audioContext.destination);
   }
 
-  createVoice({ when, offset, duration, rate, reverse = false, attack = 0.01, release = 0.02, level = 1 }) {
+  createVoice({ when, offset, duration, rate, reverse = false, attack = 0.01, release = 0.02, level = 1, loop = false, loopStart = 0, loopEnd = 0, sustainDuration = null }) {
     const baseBuffer = this.sampleLayer.buffer;
     const buffer = reverse ? this.sampleLayer.reversedBuffer : baseBuffer;
     if (!buffer) return false;
@@ -134,20 +138,32 @@ class PlaybackLayer {
     const maxOffset = Math.max(0, buffer.duration - safeDuration);
 
     const gainNode = this.audioContext.createGain();
+    const holdDuration = loop ? Math.max(safeDuration, sustainDuration ?? safeDuration) : safeDuration;
     gainNode.gain.setValueAtTime(0.0001, when);
     gainNode.gain.linearRampToValueAtTime(0.75 * level, when + attack);
-    gainNode.gain.linearRampToValueAtTime(0.0001, when + safeDuration + release);
+    gainNode.gain.setValueAtTime(0.75 * level, when + holdDuration);
+    gainNode.gain.linearRampToValueAtTime(0.0001, when + holdDuration + release);
 
     source.connect(gainNode);
     gainNode.connect(this.output);
     const intendedOffset = reverse ? buffer.duration - offset - safeDuration : offset;
     const playbackOffset = Math.max(0, Math.min(maxOffset, intendedOffset));
+    if (loop) {
+      source.loop = true;
+      const loopRegionStart = reverse ? buffer.duration - loopEnd : loopStart;
+      const loopRegionEnd = reverse ? buffer.duration - loopStart : loopEnd;
+      source.loopStart = Math.max(0, Math.min(buffer.duration - 0.01, loopRegionStart));
+      source.loopEnd = Math.max(source.loopStart + 0.01, Math.min(buffer.duration, loopRegionEnd));
+      source.start(when, playbackOffset);
+      source.stop(when + holdDuration + release);
+      return true;
+    }
     source.start(when, playbackOffset, safeDuration);
     source.stop(when + safeDuration + release);
     return true;
   }
 
-  triggerGranular(settings, when = this.audioContext.currentTime, sliceIndex = null) {
+  triggerGranular(settings, when = this.audioContext.currentTime, sliceIndex = null, noteDuration = 0.1) {
     const buffer = this.sampleLayer.buffer;
     if (!buffer) return false;
 
@@ -160,13 +176,33 @@ class PlaybackLayer {
     const resolvedSliceIndex = sliceIndex
       ?? (settings.grainLocation === "random" && slices.length ? Math.floor(Math.random() * slices.length) : 0);
     const anchorSlice = slices.length ? slices[resolvedSliceIndex % slices.length] : null;
-    let triggered = false;
+    const fixedStart = startTime + Math.max(0, regionDuration - grainDuration) * ((settings.voicePlacement ?? 50) / 100);
+    const sliceStart = settings.grainLocation === "fixed" ? fixedStart : (anchorSlice?.start ?? startTime);
+    const sliceEnd = settings.grainLocation === "fixed" ? Math.min(endTime, sliceStart + grainDuration) : (anchorSlice ? anchorSlice.start + anchorSlice.duration : endTime);
+    const maxPosition = Math.max(sliceStart, Math.min(endTime - grainDuration, sliceEnd - grainDuration));
+    const loopPosition = Math.max(startTime, Math.min(maxPosition, sliceStart));
 
+    if (settings.voicePlaybackMode && settings.voicePlaybackMode !== "one-shot") {
+      const smoothLoop = settings.voicePlaybackMode === "smooth-loop";
+      return this.createVoice({
+        when,
+        offset: Math.max(0, loopPosition),
+        duration: Math.min(grainDuration, buffer.duration - loopPosition),
+        rate,
+        reverse: settings.reverse,
+        attack: smoothLoop ? Math.min(0.02, grainDuration * 0.2) : 0.002,
+        release: smoothLoop ? Math.min(0.03, grainDuration * 0.28) : 0.004,
+        level: settings.level ?? 1,
+        loop: true,
+        loopStart: loopPosition,
+        loopEnd: Math.min(endTime, loopPosition + grainDuration),
+        sustainDuration: Math.max(grainDuration, noteDuration),
+      });
+    }
+
+    let triggered = false;
     for (let index = 0; index < grainCount; index += 1) {
       const jitter = settings.grainLocation === "fixed" ? 0 : (Math.random() * 2 - 1) * settings.spray;
-      const sliceStart = anchorSlice?.start ?? startTime;
-      const sliceEnd = anchorSlice ? anchorSlice.start + anchorSlice.duration : endTime;
-      const maxPosition = Math.max(sliceStart, Math.min(endTime - grainDuration, sliceEnd - grainDuration));
       const position = Math.max(startTime, Math.min(maxPosition, sliceStart + jitter));
       triggered =
         this.createVoice({
@@ -184,16 +220,37 @@ class PlaybackLayer {
     return triggered;
   }
 
-  triggerSlice(track, when = this.audioContext.currentTime, sliceIndex = null) {
+  triggerSlice(track, when = this.audioContext.currentTime, sliceIndex = null, noteDuration = 0.1) {
     const slices = this.sampleLayer.getSlices(track.sliceCount);
     if (!slices.length) return false;
     const index = sliceIndex ?? (track.id - 1) % slices.length;
     const slice = slices[index % slices.length];
     const rate = 2 ** (track.pitch / 12);
+    const { startTime, endTime } = this.sampleLayer.getRegionBounds();
+    const baseSliceDuration = Math.max(0.03, slice.duration * (track.chopGate / 100));
+    const placementOffset = startTime + Math.max(0, endTime - startTime - baseSliceDuration) * ((track.voicePlacement ?? 50) / 100);
+    const offset = track.grainLocation === "fixed" ? placementOffset : slice.start;
+    if (track.voicePlaybackMode && track.voicePlaybackMode !== "one-shot") {
+      const smoothLoop = track.voicePlaybackMode === "smooth-loop";
+      return this.createVoice({
+        when,
+        offset,
+        duration: Math.max(0.03, Math.min(baseSliceDuration, endTime - offset)),
+        rate,
+        reverse: track.reverse,
+        attack: smoothLoop ? 0.01 : 0.002,
+        release: smoothLoop ? 0.02 : 0.004,
+        level: track.volume,
+        loop: true,
+        loopStart: offset,
+        loopEnd: Math.min(endTime, offset + baseSliceDuration),
+        sustainDuration: Math.max(baseSliceDuration, noteDuration),
+      });
+    }
     return this.createVoice({
       when,
-      offset: slice.start,
-      duration: Math.max(0.03, slice.duration * (track.chopGate / 100)),
+      offset,
+      duration: Math.max(0.03, Math.min(baseSliceDuration, endTime - offset)),
       rate,
       reverse: track.reverse,
       attack: 0.004,
@@ -202,7 +259,7 @@ class PlaybackLayer {
     });
   }
 
-  triggerTrack(track, when = this.audioContext.currentTime, sliceIndex = null) {
+  triggerTrack(track, when = this.audioContext.currentTime, sliceIndex = null, noteDuration = null) {
     if (track.mode === "granular") {
       return this.triggerGranular(
         {
@@ -214,12 +271,15 @@ class PlaybackLayer {
           level: track.volume,
           sliceCount: track.sliceCount,
           grainLocation: track.grainLocation,
+          voicePlacement: track.voicePlacement,
+          voicePlaybackMode: track.voicePlaybackMode,
         },
         when,
         sliceIndex,
+        noteDuration,
       );
     }
-    return this.triggerSlice(track, when, sliceIndex);
+    return this.triggerSlice(track, when, sliceIndex, noteDuration);
   }
 }
 
@@ -269,8 +329,9 @@ class TransportLayer {
       if (!track.pattern[cellIndex]) return;
       if (!isTrackAudible(track)) return;
       const sliceIndex = resolvePlaybackSliceIndex(track, { advance: true });
+      const noteDuration = getTrackTriggerDuration(track);
       indicateTrackPlayback(track, sliceIndex);
-      this.playbackLayer.triggerTrack(track, when, sliceIndex);
+      this.playbackLayer.triggerTrack(track, when, sliceIndex, noteDuration);
     });
   }
 
@@ -300,6 +361,8 @@ function createTrack(id) {
     volume: 0.85,
     reverse: false,
     grainLocation: "fixed",
+    voicePlacement: 50,
+    voicePlaybackMode: "one-shot",
     grainSize: 110,
     grainDensity: 12,
     spray: 18,
@@ -363,6 +426,8 @@ function normalizeTrack(index, source = {}) {
     volume: Math.max(0, Math.min(1, Number(source.volume) || fallback.volume)),
     reverse: Boolean(source.reverse),
     grainLocation: ["fixed", "sequential", "sweep", "random"].includes(source.grainLocation) ? source.grainLocation : fallback.grainLocation,
+    voicePlacement: Math.max(0, Math.min(100, Number(source.voicePlacement) || fallback.voicePlacement)),
+    voicePlaybackMode: ["one-shot", "loop", "smooth-loop"].includes(source.voicePlaybackMode) ? source.voicePlaybackMode : fallback.voicePlaybackMode,
     rate: TRACK_RATE_VALUES.includes(source.rate) ? source.rate : fallback.rate,
     grainSize: Math.max(20, Math.min(350, Number(source.grainSize) || fallback.grainSize)),
     grainDensity: Math.max(2, Math.min(40, Number(source.grainDensity) || fallback.grainDensity)),
@@ -395,6 +460,8 @@ function writeStoredSession() {
       volume: track.volume,
       reverse: track.reverse,
       grainLocation: track.grainLocation,
+      voicePlacement: track.voicePlacement,
+      voicePlaybackMode: track.voicePlaybackMode,
       rate: track.rate,
       grainSize: track.grainSize,
       grainDensity: track.grainDensity,
@@ -443,6 +510,8 @@ function applyStoredSession() {
       mode: stored.mode,
       reverse: stored.controls?.reverse,
       grainLocation: stored.controls?.grainLocation,
+      voicePlacement: stored.controls?.voicePlacement,
+      voicePlaybackMode: stored.controls?.voicePlaybackMode,
       rate: stored.controls?.rate,
       grainSize: stored.controls?.grainSize,
       grainDensity: stored.controls?.grainDensity,
@@ -545,6 +614,10 @@ function getTrackCellIndexAtBaseStep(track, baseStep) {
   return Math.floor(baseStep / getTrackRateSpan(track));
 }
 
+function getTrackTriggerDuration(track) {
+  return getTrackRateSpan(track) * (60 / state.bpm / 8);
+}
+
 function resolvePlaybackSliceIndex(track, { advance = false } = {}) {
   const maxSliceIndex = Math.max(0, track.sliceCount - 1);
   const playbackState = state.trackPlaybackState[track.id - 1] ?? { sequentialIndex: 0, sweepIndex: 0, sweepDirection: 1 };
@@ -585,8 +658,9 @@ function resolveGrainWindow(track, sliceIndex = null) {
   const resolvedSliceIndex = sliceIndex
     ?? (track.grainLocation === "random" && slices.length ? Math.floor(Math.random() * slices.length) : 0);
   const anchorSlice = slices.length ? slices[resolvedSliceIndex % slices.length] : null;
-  const sliceStart = anchorSlice?.start ?? startTime;
-  const sliceEnd = anchorSlice ? anchorSlice.start + anchorSlice.duration : endTime;
+  const fixedStart = startTime + Math.max(0, regionDuration - grainDuration) * ((track.voicePlacement ?? 50) / 100);
+  const sliceStart = track.grainLocation === "fixed" ? fixedStart : (anchorSlice?.start ?? startTime);
+  const sliceEnd = track.grainLocation === "fixed" ? Math.min(endTime, sliceStart + grainDuration) : (anchorSlice ? anchorSlice.start + anchorSlice.duration : endTime);
   const maxPosition = Math.max(sliceStart, Math.min(endTime - grainDuration, sliceEnd - grainDuration));
   const anchoredPosition = Math.max(startTime, Math.min(maxPosition, sliceStart));
 
@@ -631,7 +705,11 @@ function indicateTrackPlayback(track, sliceIndex = null) {
     if (!slices.length) return;
     const resolvedIndex = sliceIndex ?? ((track.id - 1) % slices.length);
     const slice = slices[resolvedIndex % slices.length];
-    setTrackIndicator(trackIndex, slice.start, slice.start + slice.duration, 220);
+    const { startTime, endTime } = state.sample.getRegionBounds();
+    const sliceDuration = Math.max(0.03, slice.duration * (track.chopGate / 100));
+    const fixedStart = startTime + Math.max(0, endTime - startTime - sliceDuration) * ((track.voicePlacement ?? 50) / 100);
+    const indicatorStart = track.grainLocation === "fixed" ? fixedStart : slice.start;
+    setTrackIndicator(trackIndex, indicatorStart, indicatorStart + sliceDuration, 220);
     return;
   }
 
@@ -1012,6 +1090,11 @@ function syncUi() {
   ui.sliceCountValue.textContent = String(track.sliceCount);
   ui.mode.value = track.mode;
   ui.grainLocation.value = track.grainLocation;
+  ui.voicePlacement.value = String(track.voicePlacement);
+  ui.voicePlacementValue.textContent = `${track.voicePlacement}%`;
+  ui.voicePlaybackMode.value = track.voicePlaybackMode;
+  ui.voicePlacement.disabled = track.grainLocation !== "fixed";
+  ui.voicePlacementField.classList.toggle("is-disabled", track.grainLocation !== "fixed");
   ui.grainSize.value = String(track.grainSize);
   ui.grainSizeValue.textContent = String(track.grainSize);
   ui.grainDensity.value = String(track.grainDensity);
@@ -1081,7 +1164,7 @@ ui.sampleInput.addEventListener("change", async (event) => {
     renderPattern();
     writeStoredSession();
 
-    const previewPlayed = state.playback.triggerTrack(getSelectedTrack());
+    const previewPlayed = state.playback.triggerTrack(getSelectedTrack(), undefined, null, getTrackTriggerDuration(getSelectedTrack()));
     indicateTrackPlayback(getSelectedTrack());
     setDiagnostics(
       previewPlayed ? `loaded ${file.name} and previewed ${getSelectedTrack().name}.` : `loaded ${file.name}, but preview playback failed.`,
@@ -1134,6 +1217,8 @@ ui.randomizePattern.addEventListener("click", () => {
 
 ui.mode.addEventListener("change", () => updateSelectedTrack({ mode: ui.mode.value }));
 ui.grainLocation.addEventListener("change", () => updateSelectedTrack({ grainLocation: ui.grainLocation.value }));
+ui.voicePlacement.addEventListener("input", () => updateSelectedTrack({ voicePlacement: Number(ui.voicePlacement.value) }));
+ui.voicePlaybackMode.addEventListener("change", () => updateSelectedTrack({ voicePlaybackMode: ui.voicePlaybackMode.value }));
 ui.trackRate.addEventListener("change", () => updateSelectedTrack({ rate: ui.trackRate.value }));
 ui.bpm.addEventListener("input", () => {
   state.bpm = Number(ui.bpm.value);
@@ -1200,7 +1285,7 @@ window.addEventListener("keydown", async (event) => {
     }
     const sliceIndex = resolvePlaybackSliceIndex(track, { advance: true });
     indicateTrackPlayback(track, sliceIndex);
-    state.playback.triggerTrack(track, undefined, sliceIndex);
+    state.playback.triggerTrack(track, undefined, sliceIndex, getTrackTriggerDuration(track));
   } catch (error) {
     setDiagnostics(`keyboard trigger failed: ${error.message}`, "error");
   }

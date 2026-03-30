@@ -69,12 +69,27 @@
               </div>
             </label>
             <label class="compact-field">
-              Grain Location
+              Voice Location
               <select id="grain-location">
                 <option value="fixed">Fixed</option>
                 <option value="sequential">Sequential</option>
                 <option value="sweep">Sweep</option>
                 <option value="random">Random</option>
+              </select>
+            </label>
+            <label class="compact-field" id="voice-placement-field">
+              Placement
+              <div class="slider-row">
+                <input id="voice-placement" type="range" min="0" max="100" value="50" />
+                <span id="voice-placement-value" class="value-pill">50%</span>
+              </div>
+            </label>
+            <label class="compact-field">
+              Voice Playback Mode
+              <select id="voice-playback-mode">
+                <option value="one-shot">One Shot</option>
+                <option value="loop">Loop</option>
+                <option value="smooth-loop">Smooth Loop</option>
               </select>
             </label>
             <label class="compact-field">

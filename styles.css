@@ -685,3 +685,11 @@ input[type="range"] {
   font-size: 0.78rem;
   line-height: 1.2;
 }
+
+.compact-field.is-disabled {
+  opacity: 0.45;
+}
+
+.compact-field.is-disabled input {
+  pointer-events: none;
+}
