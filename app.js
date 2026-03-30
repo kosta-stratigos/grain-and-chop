@@ -722,7 +722,10 @@ function drawWaveform() {
   const laneHeight = height / TRACK_COUNT;
   const outerPadding = 20;
   const labelLeft = outerPadding;
-  const labelWidth = 82;
+  const labelFont = '400 11px "IBM Plex Sans", "Avenir Next", sans-serif';
+  ctx.font = labelFont;
+  const widestLabel = state.tracks.reduce((maxWidth, track) => Math.max(maxWidth, ctx.measureText(track.name).width), 0);
+  const labelWidth = Math.ceil(widestLabel);
   const viewportGap = outerPadding;
   const viewportPaddingRight = 0;
   const viewportLeft = labelLeft + labelWidth + viewportGap;
@@ -856,7 +859,7 @@ function drawWaveform() {
     ctx.stroke();
 
     ctx.fillStyle = track.color;
-    ctx.font = '400 11px "IBM Plex Sans", "Avenir Next", sans-serif';
+    ctx.font = labelFont;
     ctx.textBaseline = "middle";
     ctx.fillText(track.name, labelLeft, laneMiddle);
   });
