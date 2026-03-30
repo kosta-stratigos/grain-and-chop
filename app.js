@@ -4,6 +4,7 @@ const ui = {
   sampleStatus: document.querySelector("#sample-status"),
   diagnostics: document.querySelector("#diagnostics"),
   waveform: document.querySelector("#waveform"),
+  waveformOverview: document.querySelector("#waveform-overview"),
   regionStart: document.querySelector("#region-start"),
   regionEnd: document.querySelector("#region-end"),
   sliceCount: document.querySelector("#slice-count"),
@@ -344,6 +345,7 @@ function readStoredSession() {
 function resetTrackPlaybackState(trackIndex = null) {
   if (Number.isInteger(trackIndex)) {
     state.trackPlaybackState[trackIndex] = { sequentialIndex: 0, sweepIndex: 0, sweepDirection: 1 };
+    drawWaveformOverview();
     return;
   }
 
@@ -649,22 +651,63 @@ function syncTransportButton() {
 function getWaveformViewport() {
   if (!state.sample.buffer) return { startTime: 0, endTime: 1 };
 
-  const duration = state.sample.buffer.duration;
   const { startTime, endTime } = state.sample.getRegionBounds();
-  const regionDuration = Math.max(0.02, endTime - startTime);
-  const targetCoverage = 0.72;
-  const viewportDuration = Math.min(duration, Math.max(regionDuration / targetCoverage, duration * 0.08));
-  const regionCenter = startTime + regionDuration / 2;
-  const viewportStart = Math.max(0, Math.min(duration - viewportDuration, regionCenter - viewportDuration / 2));
   return {
-    startTime: viewportStart,
-    endTime: viewportStart + viewportDuration,
+    startTime,
+    endTime,
   };
 }
 
 function timeToViewportX(time, viewportStart, viewportEnd, viewportLeft, viewportWidth) {
   const normalized = (time - viewportStart) / Math.max(0.0001, viewportEnd - viewportStart);
   return viewportLeft + normalized * viewportWidth;
+}
+
+function drawWaveformOverview() {
+  const canvas = ui.waveformOverview;
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  const { width, height } = canvas;
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = "rgba(255,255,255,0.03)";
+  ctx.fillRect(0, 0, width, height);
+
+  if (!state.sample.buffer) return;
+
+  const data = state.sample.buffer.getChannelData(0);
+  const step = Math.max(1, Math.ceil(data.length / width));
+  let peak = 0.0001;
+  for (let index = 0; index < data.length; index += 1) peak = Math.max(peak, Math.abs(data[index] ?? 0));
+
+  const centerY = height / 2;
+  const waveformScale = height * 0.38 / peak;
+  const { startTime, endTime } = state.sample.getRegionBounds();
+  const regionStartX = (startTime / state.sample.buffer.duration) * width;
+  const regionEndX = (endTime / state.sample.buffer.duration) * width;
+
+  ctx.fillStyle = "rgba(255, 184, 77, 0.14)";
+  ctx.fillRect(regionStartX, 0, Math.max(0, regionEndX - regionStartX), height);
+
+  ctx.strokeStyle = "rgba(210, 227, 255, 0.45)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let x = 0; x < width; x += 1) {
+    let min = 1;
+    let max = -1;
+    for (let offset = 0; offset < step; offset += 1) {
+      const sample = data[x * step + offset];
+      if (sample === undefined) continue;
+      if (sample < min) min = sample;
+      if (sample > max) max = sample;
+    }
+    ctx.moveTo(x, centerY + min * waveformScale);
+    ctx.lineTo(x, centerY + max * waveformScale);
+  }
+  ctx.stroke();
+
+  ctx.strokeStyle = "rgba(255, 184, 77, 0.9)";
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(regionStartX, 1, Math.max(1, regionEndX - regionStartX), height - 2);
 }
 
 function drawWaveform() {
@@ -687,6 +730,7 @@ function drawWaveform() {
     ctx.fillStyle = "rgba(232,242,255,0.65)";
     ctx.font = '18px "IBM Plex Sans", "Avenir Next", sans-serif';
     ctx.fillText("Waveform will appear here after you load a sample.", viewportLeft, height / 2);
+    drawWaveformOverview();
     return;
   }
 
@@ -806,6 +850,8 @@ function drawWaveform() {
     ctx.textBaseline = "middle";
     ctx.fillText(track.name, labelLeft, laneMiddle);
   });
+
+  drawWaveformOverview();
 }
 
 function updateCurrentStep(activeStep = -1) {

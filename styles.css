@@ -206,7 +206,8 @@ h2 {
   border-color: rgba(255, 123, 123, 0.28);
 }
 
-#waveform {
+#waveform,
+#waveform-overview {
   width: 100%;
   height: auto;
   border-radius: var(--pane-radius);
