@@ -29,8 +29,7 @@ const ui = {
   bpmValue: document.querySelector("#bpm-value"),
   swing: document.querySelector("#swing"),
   swingValue: document.querySelector("#swing-value"),
-  stepCount: document.querySelector("#step-count"),
-  stepCountValue: document.querySelector("#step-count-value"),
+  trackRate: document.querySelector("#track-rate"),
   transportToggle: document.querySelector("#transport-toggle"),
   mixerGrid: document.querySelector("#mixer-grid"),
   patternGrid: document.querySelector("#pattern-grid"),
@@ -39,10 +38,12 @@ const ui = {
 const STORAGE_KEY = "granular-chop-lab:session";
 const DEFAULT_SAMPLE_URL = "./samples/bird_singing_-_amsel_-_blackbird_1_z9i.wav";
 const DEFAULT_SAMPLE_NAME = "bird_singing_-_amsel_-_blackbird_1_z9i.wav";
-const MIN_STEPS = 8;
-const MAX_STEPS = 32;
+const BASE_GRID_STEPS = 32;
+const MAX_PATTERN_CELLS = 32;
 const TRACK_COUNT = 4;
 const TRACK_COLORS = ["#59d0ff", "#ff8f5a", "#8dff7a", "#ffd34d"];
+const TRACK_RATE_SPANS = { "1/1": 32, "1/2": 16, "1/4": 8, "1/8": 4, "1/16": 2, "1/32": 1 };
+const TRACK_RATE_VALUES = Object.keys(TRACK_RATE_SPANS);
 
 class SampleLayer {
   constructor() {
@@ -259,7 +260,10 @@ class TransportLayer {
     if (this.onStep) this.onStep(stepIndex);
     if (!this.state.sample.buffer) return;
     this.state.tracks.forEach((track) => {
-      if (!track.pattern[stepIndex]) return;
+      const rateSpan = getTrackRateSpan(track);
+      if (stepIndex % rateSpan !== 0) return;
+      const cellIndex = getTrackCellIndexAtBaseStep(track, stepIndex);
+      if (!track.pattern[cellIndex]) return;
       if (!isTrackAudible(track)) return;
       const sliceIndex = resolvePlaybackSliceIndex(track, { advance: true });
       indicateTrackPlayback(track, sliceIndex);
@@ -268,12 +272,13 @@ class TransportLayer {
   }
 
   advance() {
-    const baseStepDuration = 60 / this.state.bpm / 4;
+    const baseStepDuration = 60 / this.state.bpm / 8;
     const swingFactor = (this.state.swing / 100) * 0.5;
-    const isOffbeatStep = this.currentStep % 2 === 0;
-    const stepDuration = baseStepDuration * (isOffbeatStep ? 1 + swingFactor : 1 - swingFactor);
+    const sixteenthIndex = Math.floor(this.currentStep / 2);
+    const isOffbeatSixteenth = sixteenthIndex % 2 === 1;
+    const stepDuration = baseStepDuration * (isOffbeatSixteenth ? 1 - swingFactor : 1 + swingFactor);
     this.nextStepTime += stepDuration;
-    this.currentStep = (this.currentStep + 1) % this.state.steps;
+    this.currentStep = (this.currentStep + 1) % BASE_GRID_STEPS;
   }
 }
 
@@ -298,7 +303,8 @@ function createTrack(id) {
     pitch: 0,
     chopGate: 70,
     sliceCount: 8,
-    pattern: Array.from({ length: MAX_STEPS }, (_, index) => (index + id - 1) % 4 === 0),
+    rate: "1/16",
+    pattern: Array.from({ length: MAX_PATTERN_CELLS }, (_, index) => (index + id - 1) % 4 === 0),
   };
 }
 
@@ -309,7 +315,7 @@ const state = {
   transport: null,
   bpm: 112,
   swing: 0,
-  steps: 16,
+  steps: BASE_GRID_STEPS,
   selectedTrackIndex: 0,
   tracks: Array.from({ length: TRACK_COUNT }, (_, index) => createTrack(index + 1)),
   trackPlaybackState: Array.from({ length: TRACK_COUNT }, () => ({ sequentialIndex: 0, sweepIndex: 0, sweepDirection: 1 })),
@@ -352,13 +358,14 @@ function normalizeTrack(index, source = {}) {
     volume: Math.max(0, Math.min(1, Number(source.volume) || fallback.volume)),
     reverse: Boolean(source.reverse),
     grainLocation: ["fixed", "sequential", "sweep", "random"].includes(source.grainLocation) ? source.grainLocation : fallback.grainLocation,
+    rate: TRACK_RATE_VALUES.includes(source.rate) ? source.rate : fallback.rate,
     grainSize: Math.max(20, Math.min(350, Number(source.grainSize) || fallback.grainSize)),
     grainDensity: Math.max(2, Math.min(40, Number(source.grainDensity) || fallback.grainDensity)),
     spray: Math.max(0, Math.min(100, Number(source.spray) || fallback.spray)),
     pitch: Math.max(-12, Math.min(12, Number(source.pitch) || fallback.pitch)),
     chopGate: Math.max(10, Math.min(100, Number(source.chopGate) || fallback.chopGate)),
     sliceCount: Math.max(2, Math.min(16, Number(source.sliceCount) || fallback.sliceCount)),
-    pattern: Array.from({ length: MAX_STEPS }, (_, step) => Boolean(source.pattern?.[step] ?? fallback.pattern[step])),
+    pattern: Array.from({ length: MAX_PATTERN_CELLS }, (_, step) => Boolean(source.pattern?.[step] ?? fallback.pattern[step])),
   };
 }
 
@@ -382,13 +389,14 @@ function writeStoredSession() {
       volume: track.volume,
       reverse: track.reverse,
       grainLocation: track.grainLocation,
+      rate: track.rate,
       grainSize: track.grainSize,
       grainDensity: track.grainDensity,
       spray: track.spray,
       pitch: track.pitch,
       chopGate: track.chopGate,
       sliceCount: track.sliceCount,
-      pattern: track.pattern.slice(0, MAX_STEPS),
+      pattern: track.pattern.slice(0, MAX_PATTERN_CELLS),
     })),
   };
 
@@ -405,7 +413,7 @@ function applyStoredSession() {
 
   state.bpm = Number.isFinite(stored.bpm) ? Math.max(60, Math.min(180, stored.bpm)) : state.bpm;
   state.swing = Number.isFinite(stored.swing) ? Math.max(0, Math.min(100, stored.swing)) : state.swing;
-  state.steps = Number.isFinite(stored.steps) ? Math.max(MIN_STEPS, Math.min(MAX_STEPS, stored.steps)) : state.steps;
+  state.steps = BASE_GRID_STEPS;
   state.selectedTrackIndex = Number.isFinite(stored.selectedTrackIndex)
     ? Math.max(0, Math.min(TRACK_COUNT - 1, stored.selectedTrackIndex))
     : 0;
@@ -428,6 +436,7 @@ function applyStoredSession() {
       mode: stored.mode,
       reverse: stored.controls?.reverse,
       grainLocation: stored.controls?.grainLocation,
+      rate: stored.controls?.rate,
       grainSize: stored.controls?.grainSize,
       grainDensity: stored.controls?.grainDensity,
       spray: stored.controls?.spray,
@@ -513,6 +522,18 @@ function hexToRgba(hex, alpha) {
 
 function formatModeLabel(mode) {
   return mode === "granular" ? "grain" : mode;
+}
+
+function getTrackRateSpan(track) {
+  return TRACK_RATE_SPANS[track.rate] ?? TRACK_RATE_SPANS["1/16"];
+}
+
+function getTrackVisibleCellCount(track) {
+  return Math.max(1, BASE_GRID_STEPS / getTrackRateSpan(track));
+}
+
+function getTrackCellIndexAtBaseStep(track, baseStep) {
+  return Math.floor(baseStep / getTrackRateSpan(track));
 }
 
 function resolvePlaybackSliceIndex(track, { advance = false } = {}) {
@@ -723,8 +744,9 @@ function drawWaveform() {
 
 function updateCurrentStep(activeStep = -1) {
   ui.patternGrid.querySelectorAll(".step").forEach((button) => {
-    const stepIndex = Number(button.dataset.stepIndex);
-    button.classList.toggle("current", stepIndex === activeStep);
+    const stepStart = Number(button.dataset.stepStart);
+    const stepSpan = Number(button.dataset.stepSpan);
+    button.classList.toggle("current", activeStep >= stepStart && activeStep < stepStart + stepSpan);
   });
 }
 
@@ -818,14 +840,15 @@ function renderMixer() {
 function renderPattern(activeStep = -1) {
   ui.patternGrid.innerHTML = "";
   state.tracks.forEach((track, trackIndex) => {
+    const visibleCellCount = getTrackVisibleCellCount(track);
     const row = document.createElement("div");
     row.className = "pattern-row";
-    row.style.gridTemplateColumns = `88px repeat(${state.steps}, minmax(32px, 1fr))`;
+    row.style.gridTemplateColumns = `88px repeat(${visibleCellCount}, minmax(32px, 1fr))`;
 
     const label = document.createElement("button");
     label.className = `pattern-row-label${trackIndex === state.selectedTrackIndex ? " active" : ""}`;
     applyTrackColor(label, track.color);
-    label.innerHTML = `<span class="pattern-row-name">${track.name}</span><span class="pattern-row-mode">${formatModeLabel(track.mode)}${track.muted ? " • M" : track.solo ? " • S" : ""}</span>`;
+    label.innerHTML = `<span class="pattern-row-name">${track.name}</span><span class="pattern-row-mode">${track.rate} • ${formatModeLabel(track.mode)}${track.muted ? " • M" : track.solo ? " • S" : ""}</span>`;
     label.addEventListener("click", () => {
       state.selectedTrackIndex = trackIndex;
       syncUi();
@@ -837,16 +860,18 @@ function renderPattern(activeStep = -1) {
     });
     row.append(label);
 
-    track.pattern.slice(0, state.steps).forEach((enabled, stepIndex) => {
+    track.pattern.slice(0, visibleCellCount).forEach((enabled, cellIndex) => {
       const stepButton = document.createElement("button");
+      const stepStart = cellIndex * getTrackRateSpan(track);
       stepButton.className = `step${enabled ? " active" : ""}`;
       applyTrackColor(stepButton, track.color);
-      stepButton.dataset.stepIndex = String(stepIndex);
+      stepButton.dataset.stepStart = String(stepStart);
+      stepButton.dataset.stepSpan = String(getTrackRateSpan(track));
       stepButton.dataset.trackIndex = String(trackIndex);
-      stepButton.textContent = String(stepIndex + 1);
+      stepButton.textContent = String(cellIndex + 1);
       stepButton.addEventListener("click", () => {
-        track.pattern[stepIndex] = !track.pattern[stepIndex];
-        stepButton.classList.toggle("active", track.pattern[stepIndex]);
+        track.pattern[cellIndex] = !track.pattern[cellIndex];
+        stepButton.classList.toggle("active", track.pattern[cellIndex]);
         writeStoredSession();
       });
       row.append(stepButton);
@@ -877,8 +902,7 @@ function syncUi() {
   ui.bpmValue.textContent = String(state.bpm);
   ui.swing.value = String(state.swing);
   ui.swingValue.textContent = `${state.swing}%`;
-  ui.stepCount.value = String(state.steps);
-  ui.stepCountValue.textContent = String(state.steps);
+  ui.trackRate.value = track.rate;
   ui.fillDensity.value = String(state.fillDensity);
   ui.fillDensityValue.textContent = `${state.fillDensity}%`;
   syncTransportButton();
@@ -893,7 +917,7 @@ function syncUi() {
 
 function updateSelectedTrack(patch) {
   Object.assign(getSelectedTrack(), patch);
-  if ("grainLocation" in patch || "sliceCount" in patch) resetTrackPlaybackState(state.selectedTrackIndex);
+  if ("grainLocation" in patch || "sliceCount" in patch || "rate" in patch) resetTrackPlaybackState(state.selectedTrackIndex);
   syncUi();
   renderTrackSelector();
   renderMixer();
@@ -962,9 +986,10 @@ ui.sliceCount.addEventListener("input", () => {
 
 ui.randomizePattern.addEventListener("click", () => {
   const track = getSelectedTrack();
-  const activeSteps = Math.round((state.steps * state.fillDensity) / 100);
-  const nextPattern = Array.from({ length: MAX_STEPS }, () => false);
-  const candidateSteps = Array.from({ length: state.steps }, (_, index) => index);
+  const visibleCellCount = getTrackVisibleCellCount(track);
+  const activeSteps = Math.round((visibleCellCount * state.fillDensity) / 100);
+  const nextPattern = Array.from({ length: MAX_PATTERN_CELLS }, () => false);
+  const candidateSteps = Array.from({ length: visibleCellCount }, (_, index) => index);
 
   for (let index = candidateSteps.length - 1; index > 0; index -= 1) {
     const swapIndex = Math.floor(Math.random() * (index + 1));
@@ -982,6 +1007,7 @@ ui.randomizePattern.addEventListener("click", () => {
 
 ui.mode.addEventListener("change", () => updateSelectedTrack({ mode: ui.mode.value }));
 ui.grainLocation.addEventListener("change", () => updateSelectedTrack({ grainLocation: ui.grainLocation.value }));
+ui.trackRate.addEventListener("change", () => updateSelectedTrack({ rate: ui.trackRate.value }));
 ui.bpm.addEventListener("input", () => {
   state.bpm = Number(ui.bpm.value);
   syncUi();
@@ -990,12 +1016,6 @@ ui.bpm.addEventListener("input", () => {
 ui.swing.addEventListener("input", () => {
   state.swing = Math.max(0, Math.min(100, Number(ui.swing.value)));
   syncUi();
-  writeStoredSession();
-});
-ui.stepCount.addEventListener("input", () => {
-  state.steps = Math.max(MIN_STEPS, Math.min(MAX_STEPS, Number(ui.stepCount.value)));
-  syncUi();
-  renderPattern();
   writeStoredSession();
 });
 ui.fillDensity.addEventListener("input", () => {
