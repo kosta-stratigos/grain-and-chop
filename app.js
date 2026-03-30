@@ -646,6 +646,27 @@ function syncTransportButton() {
   ui.transportToggle.textContent = isTransportRunning() ? "Pause" : "Play";
 }
 
+function getWaveformViewport() {
+  if (!state.sample.buffer) return { startTime: 0, endTime: 1 };
+
+  const duration = state.sample.buffer.duration;
+  const { startTime, endTime } = state.sample.getRegionBounds();
+  const regionDuration = Math.max(0.02, endTime - startTime);
+  const targetCoverage = 0.72;
+  const viewportDuration = Math.min(duration, Math.max(regionDuration / targetCoverage, duration * 0.08));
+  const regionCenter = startTime + regionDuration / 2;
+  const viewportStart = Math.max(0, Math.min(duration - viewportDuration, regionCenter - viewportDuration / 2));
+  return {
+    startTime: viewportStart,
+    endTime: viewportStart + viewportDuration,
+  };
+}
+
+function timeToViewportX(time, viewportStart, viewportEnd, width) {
+  const normalized = (time - viewportStart) / Math.max(0.0001, viewportEnd - viewportStart);
+  return normalized * width;
+}
+
 function drawWaveform() {
   const canvas = ui.waveform;
   const ctx = canvas.getContext("2d");
@@ -657,29 +678,42 @@ function drawWaveform() {
 
   if (!state.sample.buffer) {
     ctx.fillStyle = "rgba(232,242,255,0.65)";
-    ctx.font = "18px IBM Plex Sans";
+    ctx.font = '18px "IBM Plex Sans", "Avenir Next", sans-serif';
     ctx.fillText("Waveform will appear here after you load a sample.", 32, height / 2);
     return;
   }
 
   const data = state.sample.buffer.getChannelData(0);
-  const step = Math.ceil(data.length / width);
+  const { startTime, endTime } = state.sample.getRegionBounds();
+  const viewport = getWaveformViewport();
+  const viewportStartSample = Math.max(0, Math.floor(viewport.startTime * state.sample.buffer.sampleRate));
+  const viewportEndSample = Math.min(data.length, Math.ceil(viewport.endTime * state.sample.buffer.sampleRate));
+  const viewportSampleLength = Math.max(1, viewportEndSample - viewportStartSample);
+  const samplesPerPixel = Math.max(1, Math.ceil(viewportSampleLength / width));
+  let peak = 0.0001;
+
+  for (let sampleIndex = viewportStartSample; sampleIndex < viewportEndSample; sampleIndex += 1) {
+    peak = Math.max(peak, Math.abs(data[sampleIndex] ?? 0));
+  }
+
   const centerY = height / 2;
-  const waveformScale = height * 0.36;
-  const startX = state.sample.regionStart * width;
-  const endX = state.sample.regionEnd * width;
+  const waveformScale = height * 0.4 / peak;
+  const regionStartX = Math.max(0, timeToViewportX(startTime, viewport.startTime, viewport.endTime, width));
+  const regionEndX = Math.min(width, timeToViewportX(endTime, viewport.startTime, viewport.endTime, width));
 
   ctx.fillStyle = "rgba(255, 184, 77, 0.1)";
-  ctx.fillRect(startX, 0, endX - startX, height);
+  ctx.fillRect(regionStartX, 0, Math.max(0, regionEndX - regionStartX), height);
 
   ctx.strokeStyle = "rgba(210, 227, 255, 0.55)";
   ctx.lineWidth = 1;
   ctx.beginPath();
   for (let x = 0; x < width; x += 1) {
+    const sliceStart = viewportStartSample + x * samplesPerPixel;
+    const sliceEnd = Math.min(viewportEndSample, sliceStart + samplesPerPixel);
     let min = 1;
     let max = -1;
-    for (let i = 0; i < step; i += 1) {
-      const sample = data[x * step + i];
+    for (let sampleIndex = sliceStart; sampleIndex < sliceEnd; sampleIndex += 1) {
+      const sample = data[sampleIndex];
       if (sample === undefined) continue;
       if (sample < min) min = sample;
       if (sample > max) max = sample;
@@ -702,32 +736,35 @@ function drawWaveform() {
     ctx.strokeStyle = hexToRgba(track.color, trackIndex === state.selectedTrackIndex ? 0.8 : 0.42);
     ctx.lineWidth = trackIndex === state.selectedTrackIndex ? 1.5 : 1;
     state.sample.getSlices(track.sliceCount).forEach((slice, sliceIndex) => {
-      const x = (slice.start / state.sample.buffer.duration) * width;
+      const sliceX = timeToViewportX(slice.start, viewport.startTime, viewport.endTime, width);
+      if (sliceX < 0 || sliceX > width) return;
       ctx.beginPath();
-      ctx.moveTo(x, laneTop + laneInset);
-      ctx.lineTo(x, laneBottom - laneInset);
+      ctx.moveTo(sliceX, laneTop + laneInset);
+      ctx.lineTo(sliceX, laneBottom - laneInset);
       ctx.stroke();
 
       if (sliceIndex === track.sliceCount - 1) {
-        const endMarkerX = ((slice.start + slice.duration) / state.sample.buffer.duration) * width;
-        ctx.beginPath();
-        ctx.moveTo(endMarkerX, laneTop + laneInset);
-        ctx.lineTo(endMarkerX, laneBottom - laneInset);
-        ctx.stroke();
+        const endMarkerX = timeToViewportX(slice.start + slice.duration, viewport.startTime, viewport.endTime, width);
+        if (endMarkerX >= 0 && endMarkerX <= width) {
+          ctx.beginPath();
+          ctx.moveTo(endMarkerX, laneTop + laneInset);
+          ctx.lineTo(endMarkerX, laneBottom - laneInset);
+          ctx.stroke();
+        }
       }
     });
 
     ctx.strokeStyle = hexToRgba(track.color, trackIndex === state.selectedTrackIndex ? 0.38 : 0.22);
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(startX, laneMiddle);
-    ctx.lineTo(endX, laneMiddle);
+    ctx.moveTo(regionStartX, laneMiddle);
+    ctx.lineTo(regionEndX, laneMiddle);
     ctx.stroke();
 
     const indicator = state.trackIndicators[trackIndex];
     if (indicator) {
-      const indicatorStartX = (indicator.start / state.sample.buffer.duration) * width;
-      const indicatorEndX = (indicator.end / state.sample.buffer.duration) * width;
+      const indicatorStartX = Math.max(0, timeToViewportX(indicator.start, viewport.startTime, viewport.endTime, width));
+      const indicatorEndX = Math.min(width, timeToViewportX(indicator.end, viewport.startTime, viewport.endTime, width));
       const indicatorWidth = Math.max(2, indicatorEndX - indicatorStartX);
       ctx.fillStyle = hexToRgba(track.color, trackIndex === state.selectedTrackIndex ? 0.3 : 0.18);
       ctx.fillRect(indicatorStartX, laneTop + laneInset, indicatorWidth, sliceHeight);
@@ -744,8 +781,8 @@ function drawWaveform() {
     ctx.stroke();
 
     ctx.fillStyle = track.color;
-    ctx.font = "11px IBM Plex Sans";
-    ctx.fillText(`${track.name} · ${track.sliceCount}`, 10, laneTop + 14);
+    ctx.font = '600 11px "IBM Plex Sans", "Avenir Next", sans-serif';
+    ctx.fillText(track.name, 10, laneTop + 14);
   });
 }
 
