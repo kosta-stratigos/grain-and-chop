@@ -692,14 +692,19 @@ function drawWaveformOverview() {
   ctx.lineWidth = 1;
   ctx.beginPath();
   for (let x = 0; x < width; x += 1) {
+    const sliceStart = x * step;
+    if (sliceStart >= data.length) break;
     let min = 1;
     let max = -1;
+    let hasSample = false;
     for (let offset = 0; offset < step; offset += 1) {
-      const sample = data[x * step + offset];
+      const sample = data[sliceStart + offset];
       if (sample === undefined) continue;
+      hasSample = true;
       if (sample < min) min = sample;
       if (sample > max) max = sample;
     }
+    if (!hasSample) continue;
     ctx.moveTo(x, centerY + min * waveformScale);
     ctx.lineTo(x, centerY + max * waveformScale);
   }
@@ -717,8 +722,8 @@ function drawWaveform() {
   const laneHeight = height / TRACK_COUNT;
   const labelLeft = 10;
   const labelWidth = 82;
-  const viewportGap = 6;
-  const viewportPaddingRight = 12;
+  const viewportGap = 20;
+  const viewportPaddingRight = 0;
   const viewportLeft = labelLeft + labelWidth + viewportGap;
   const viewportRight = width - viewportPaddingRight;
   const viewportWidth = Math.max(1, viewportRight - viewportLeft);
