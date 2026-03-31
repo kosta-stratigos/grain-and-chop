@@ -30,6 +30,15 @@ const ui = {
   chopGate: document.querySelector("#chop-gate"),
   chopGateValue: document.querySelector("#chop-gate-value"),
   reverse: document.querySelector("#reverse"),
+  effectsMatrix: document.querySelector("#effects-matrix"),
+  filterOverlay: document.querySelector("#filter-overlay"),
+  filterOverlayTrack: document.querySelector("#filter-overlay-track"),
+  filterOverlayClose: document.querySelector("#filter-overlay-close"),
+  filterFrequency: document.querySelector("#filter-frequency"),
+  filterFrequencyValue: document.querySelector("#filter-frequency-value"),
+  filterQ: document.querySelector("#filter-q"),
+  filterQValue: document.querySelector("#filter-q-value"),
+  filterTypeRadios: Array.from(document.querySelectorAll('input[name="filter-type"]')),
   bpm: document.querySelector("#bpm"),
   bpmValue: document.querySelector("#bpm-value"),
   swing: document.querySelector("#swing"),
@@ -51,6 +60,40 @@ const TRACK_COUNT = 4;
 const TRACK_COLORS = ["#59d0ff", "#ff8f5a", "#8dff7a", "#ffd34d"];
 const TRACK_RATE_SPANS = { "1/1": 32, "1/2": 16, "1/4": 8, "1/8": 4, "1/16": 2, "1/32": 1 };
 const TRACK_RATE_VALUES = Object.keys(TRACK_RATE_SPANS);
+const EFFECT_KEYS = ["filter"];
+const FILTER_TYPES = ["lowpass", "bandpass", "highpass"];
+
+function clampFilterFrequency(value) {
+  return Math.max(20, Math.min(16000, Number(value) || 1200));
+}
+
+function clampFilterQ(value) {
+  return Math.max(0.1, Math.min(20, Number(value) || 0.8));
+}
+
+function createDefaultFilterSettings() {
+  return {
+    enabled: false,
+    type: "lowpass",
+    frequency: 1200,
+    q: 0.8,
+  };
+}
+
+function normalizeFilterSettings(source = {}, fallback = createDefaultFilterSettings()) {
+  return {
+    enabled: Boolean(source.enabled),
+    type: FILTER_TYPES.includes(source.type) ? source.type : fallback.type,
+    frequency: clampFilterFrequency(source.frequency ?? fallback.frequency),
+    q: clampFilterQ(source.q ?? fallback.q),
+  };
+}
+
+function createTrackEffects(source = {}) {
+  return {
+    filter: normalizeFilterSettings(source.filter),
+  };
+}
 
 class SampleLayer {
   constructor() {
@@ -125,7 +168,21 @@ class PlaybackLayer {
     this.output.connect(audioContext.destination);
   }
 
-  createVoice({ when, offset, duration, rate, reverse = false, attack = 0.01, release = 0.02, level = 1, loop = false, loopStart = 0, loopEnd = 0, sustainDuration = null }) {
+  createVoice({
+    when,
+    offset,
+    duration,
+    rate,
+    reverse = false,
+    attack = 0.01,
+    release = 0.02,
+    level = 1,
+    loop = false,
+    loopStart = 0,
+    loopEnd = 0,
+    sustainDuration = null,
+    filter = null,
+  }) {
     const baseBuffer = this.sampleLayer.buffer;
     const buffer = reverse ? this.sampleLayer.reversedBuffer : baseBuffer;
     if (!buffer) return false;
@@ -144,7 +201,16 @@ class PlaybackLayer {
     gainNode.gain.setValueAtTime(0.75 * level, when + holdDuration);
     gainNode.gain.linearRampToValueAtTime(0.0001, when + holdDuration + release);
 
-    source.connect(gainNode);
+    if (filter?.enabled) {
+      const filterNode = this.audioContext.createBiquadFilter();
+      filterNode.type = filter.type;
+      filterNode.frequency.setValueAtTime(clampFilterFrequency(filter.frequency), when);
+      filterNode.Q.setValueAtTime(clampFilterQ(filter.q), when);
+      source.connect(filterNode);
+      filterNode.connect(gainNode);
+    } else {
+      source.connect(gainNode);
+    }
     gainNode.connect(this.output);
     const intendedOffset = reverse ? buffer.duration - offset - safeDuration : offset;
     const playbackOffset = Math.max(0, Math.min(maxOffset, intendedOffset));
@@ -190,6 +256,7 @@ class PlaybackLayer {
         duration: Math.min(grainDuration, buffer.duration - loopPosition),
         rate,
         reverse: settings.reverse,
+        filter: settings.filter,
         attack: smoothLoop ? Math.min(0.02, grainDuration * 0.2) : 0.002,
         release: smoothLoop ? Math.min(0.03, grainDuration * 0.28) : 0.004,
         level: settings.level ?? 1,
@@ -211,6 +278,7 @@ class PlaybackLayer {
           duration: Math.min(grainDuration, buffer.duration - position),
           rate,
           reverse: settings.reverse,
+          filter: settings.filter,
           attack: grainDuration * 0.2,
           release: grainDuration * 0.35,
           level: settings.level ?? 1,
@@ -238,6 +306,7 @@ class PlaybackLayer {
         duration: Math.max(0.03, Math.min(baseSliceDuration, endTime - offset)),
         rate,
         reverse: track.reverse,
+        filter: track.effects.filter,
         attack: smoothLoop ? 0.01 : 0.002,
         release: smoothLoop ? 0.02 : 0.004,
         level: track.volume,
@@ -253,6 +322,7 @@ class PlaybackLayer {
       duration: Math.max(0.03, Math.min(baseSliceDuration, endTime - offset)),
       rate,
       reverse: track.reverse,
+      filter: track.effects.filter,
       attack: 0.004,
       release: 0.03,
       level: track.volume,
@@ -273,6 +343,7 @@ class PlaybackLayer {
           grainLocation: track.grainLocation,
           voicePlacement: track.voicePlacement,
           voicePlaybackMode: track.voicePlaybackMode,
+          filter: track.effects.filter,
         },
         when,
         sliceIndex,
@@ -363,6 +434,7 @@ function createTrack(id) {
     grainLocation: "fixed",
     voicePlacement: 50,
     voicePlaybackMode: "one-shot",
+    effects: createTrackEffects(),
     grainSize: 110,
     grainDensity: 12,
     spray: 18,
@@ -386,6 +458,11 @@ const state = {
   tracks: Array.from({ length: TRACK_COUNT }, (_, index) => createTrack(index + 1)),
   trackPlaybackState: Array.from({ length: TRACK_COUNT }, () => ({ sequentialIndex: 0, sweepIndex: 0, sweepDirection: 1 })),
   trackIndicators: Array.from({ length: TRACK_COUNT }, () => null),
+  filterOverlay: {
+    open: false,
+    trackIndex: 0,
+    effectKey: "filter",
+  },
   defaultSampleLoaded: false,
   currentSampleName: "",
   fillDensity: 50,
@@ -428,6 +505,9 @@ function normalizeTrack(index, source = {}) {
     grainLocation: ["fixed", "sequential", "sweep", "random"].includes(source.grainLocation) ? source.grainLocation : fallback.grainLocation,
     voicePlacement: Math.max(0, Math.min(100, Number(source.voicePlacement) || fallback.voicePlacement)),
     voicePlaybackMode: ["one-shot", "loop", "smooth-loop"].includes(source.voicePlaybackMode) ? source.voicePlaybackMode : fallback.voicePlaybackMode,
+    effects: {
+      filter: normalizeFilterSettings(source.effects?.filter ?? source.filter ?? fallback.effects.filter, fallback.effects.filter),
+    },
     rate: TRACK_RATE_VALUES.includes(source.rate) ? source.rate : fallback.rate,
     grainSize: Math.max(20, Math.min(350, Number(source.grainSize) || fallback.grainSize)),
     grainDensity: Math.max(2, Math.min(40, Number(source.grainDensity) || fallback.grainDensity)),
@@ -462,6 +542,9 @@ function writeStoredSession() {
       grainLocation: track.grainLocation,
       voicePlacement: track.voicePlacement,
       voicePlaybackMode: track.voicePlaybackMode,
+      effects: {
+        filter: { ...track.effects.filter },
+      },
       rate: track.rate,
       grainSize: track.grainSize,
       grainDensity: track.grainDensity,
@@ -602,6 +685,21 @@ function formatModeLabel(mode) {
   return mode === "granular" ? "grain" : mode;
 }
 
+function formatFilterTypeLabel(type) {
+  if (type === "highpass") return "HP";
+  if (type === "bandpass") return "BP";
+  return "LP";
+}
+
+function formatFilterFrequency(value) {
+  const safeValue = clampFilterFrequency(value);
+  return safeValue >= 1000 ? `${(safeValue / 1000).toFixed(2)} kHz` : `${Math.round(safeValue)} Hz`;
+}
+
+function formatFilterQ(value) {
+  return clampFilterQ(value).toFixed(1);
+}
+
 function getTrackRateSpan(track) {
   return TRACK_RATE_SPANS[track.rate] ?? TRACK_RATE_SPANS["1/16"];
 }
@@ -679,6 +777,53 @@ function applyTrackColor(element, color) {
   element.style.setProperty("--track-color", color);
   element.style.setProperty("--track-color-soft", hexToRgba(color, 0.14));
   element.style.setProperty("--track-color-strong", hexToRgba(color, 0.38));
+}
+
+function getTrackFilter(trackOrIndex) {
+  const track = Number.isInteger(trackOrIndex) ? state.tracks[trackOrIndex] : trackOrIndex;
+  return track?.effects?.filter ?? createDefaultFilterSettings();
+}
+
+function syncFilterOverlay() {
+  if (!ui.filterOverlay) return;
+  const isOpen = state.filterOverlay.open;
+  ui.filterOverlay.classList.toggle("is-hidden", !isOpen);
+  ui.filterOverlay.setAttribute("aria-hidden", String(!isOpen));
+  if (!isOpen) return;
+
+  const track = state.tracks[state.filterOverlay.trackIndex] ?? getSelectedTrack();
+  const filter = getTrackFilter(track);
+  if (ui.filterOverlayTrack) {
+    ui.filterOverlayTrack.textContent = `${track.name} • Filter ${filter.enabled ? "enabled" : "disabled"}`;
+  }
+  ui.filterFrequency.value = String(Math.round(filter.frequency));
+  ui.filterFrequencyValue.textContent = formatFilterFrequency(filter.frequency);
+  ui.filterQ.value = String(filter.q);
+  ui.filterQValue.textContent = formatFilterQ(filter.q);
+  ui.filterTypeRadios.forEach((radio) => {
+    radio.checked = radio.value === filter.type;
+  });
+}
+
+function openFilterOverlay(trackIndex) {
+  state.selectedTrackIndex = trackIndex;
+  state.filterOverlay = {
+    open: true,
+    trackIndex,
+    effectKey: "filter",
+  };
+  syncUi();
+  renderTrackSelector();
+  renderEffectsMatrix();
+  renderMixer();
+  renderPattern();
+  drawWaveform();
+  writeStoredSession();
+}
+
+function closeFilterOverlay() {
+  state.filterOverlay.open = false;
+  syncFilterOverlay();
 }
 
 function setTrackIndicator(trackIndex, start, end, durationMs = 180) {
@@ -967,6 +1112,7 @@ function renderTrackSelector() {
       state.selectedTrackIndex = index;
       syncUi();
       renderTrackSelector();
+      renderEffectsMatrix();
       renderMixer();
       renderPattern();
       drawWaveform();
@@ -986,6 +1132,7 @@ function renderTrackSelector() {
       if (track.muted) track.solo = false;
       syncUi();
       renderTrackSelector();
+      renderEffectsMatrix();
       renderMixer();
       renderPattern();
       writeStoredSession();
@@ -1001,6 +1148,7 @@ function renderTrackSelector() {
       if (track.solo) track.muted = false;
       syncUi();
       renderTrackSelector();
+      renderEffectsMatrix();
       renderMixer();
       renderPattern();
       writeStoredSession();
@@ -1040,6 +1188,109 @@ function renderMixer() {
   });
 }
 
+function renderEffectsMatrix() {
+  if (!ui.effectsMatrix) return;
+  ui.effectsMatrix.innerHTML = "";
+
+  const headerRow = document.createElement("div");
+  headerRow.className = "effects-matrix-row effects-matrix-header";
+
+  const corner = document.createElement("div");
+  corner.className = "effects-cell effects-label-cell effects-corner-cell";
+  corner.textContent = "FX";
+  headerRow.append(corner);
+
+  state.tracks.forEach((track, index) => {
+    const headerCell = document.createElement("button");
+    headerCell.className = `effects-cell effects-track-head${index === state.selectedTrackIndex ? " active" : ""}`;
+    headerCell.textContent = `T${track.id}`;
+    applyTrackColor(headerCell, track.color);
+    headerCell.addEventListener("click", () => {
+      state.selectedTrackIndex = index;
+      syncUi();
+      renderTrackSelector();
+      renderEffectsMatrix();
+      renderMixer();
+      renderPattern();
+      drawWaveform();
+      writeStoredSession();
+    });
+    headerRow.append(headerCell);
+  });
+  ui.effectsMatrix.append(headerRow);
+
+  EFFECT_KEYS.forEach((effectKey) => {
+    const row = document.createElement("div");
+    row.className = "effects-matrix-row";
+
+    const labelCell = document.createElement("div");
+    labelCell.className = "effects-cell effects-label-cell";
+    labelCell.textContent = effectKey === "filter" ? "Filter" : effectKey;
+    row.append(labelCell);
+
+    state.tracks.forEach((track, trackIndex) => {
+      const effect = track.effects[effectKey];
+      const button = document.createElement("button");
+      button.className = `effects-cell effects-toggle${effect.enabled ? " active" : ""}${trackIndex === state.selectedTrackIndex ? " selected" : ""}`;
+      applyTrackColor(button, track.color);
+      button.textContent = effect.enabled ? formatFilterTypeLabel(effect.type) : "Off";
+      button.title = `${track.name} ${effectKey} ${effect.enabled ? "enabled" : "disabled"}`;
+
+      let singleToggleTimer = null;
+      let holdTimer = null;
+      let lastPointerUp = 0;
+      let holdTriggered = false;
+
+      button.addEventListener("click", () => {
+        if (holdTriggered) {
+          holdTriggered = false;
+          return;
+        }
+        if (singleToggleTimer) return;
+        singleToggleTimer = window.setTimeout(() => {
+          singleToggleTimer = null;
+          track.effects[effectKey].enabled = !track.effects[effectKey].enabled;
+          syncUi();
+          renderEffectsMatrix();
+          writeStoredSession();
+        }, 220);
+      });
+
+      button.addEventListener("pointerdown", () => {
+        const now = performance.now();
+        if (now - lastPointerUp > 320) return;
+        if (singleToggleTimer) {
+          window.clearTimeout(singleToggleTimer);
+          singleToggleTimer = null;
+        }
+        holdTriggered = false;
+        button.classList.add("is-armed");
+        holdTimer = window.setTimeout(() => {
+          holdTriggered = true;
+          button.classList.remove("is-armed");
+          openFilterOverlay(trackIndex);
+        }, 1000);
+      });
+
+      const cancelHold = () => {
+        if (holdTimer) {
+          window.clearTimeout(holdTimer);
+          holdTimer = null;
+        }
+        button.classList.remove("is-armed");
+        lastPointerUp = performance.now();
+      };
+
+      button.addEventListener("pointerup", cancelHold);
+      button.addEventListener("pointerleave", cancelHold);
+      button.addEventListener("pointercancel", cancelHold);
+      row.append(button);
+    });
+
+    ui.effectsMatrix.append(row);
+  });
+}
+
 function renderPattern(activeStep = -1) {
   ui.patternGrid.innerHTML = "";
   state.tracks.forEach((track, trackIndex) => {
@@ -1056,6 +1307,7 @@ function renderPattern(activeStep = -1) {
       state.selectedTrackIndex = trackIndex;
       syncUi();
       renderTrackSelector();
+      renderEffectsMatrix();
       renderMixer();
       renderPattern(activeStep);
       drawWaveform();
@@ -1116,6 +1368,7 @@ function syncUi() {
   ui.mixVolumeValue.textContent = `${Math.round(state.mixVolume * 100)}%`;
   ui.fillDensityValue.textContent = `${state.fillDensity}%`;
   syncTransportButton();
+  syncFilterOverlay();
   ui.regionStart.value = String(Math.round(state.sample.regionStart * 1000));
   ui.regionEnd.value = String(Math.round(state.sample.regionEnd * 1000));
   ui.sliceCount.value = String(track.sliceCount);
@@ -1130,9 +1383,19 @@ function updateSelectedTrack(patch) {
   if ("grainLocation" in patch || "sliceCount" in patch || "rate" in patch) resetTrackPlaybackState(state.selectedTrackIndex);
   syncUi();
   renderTrackSelector();
+  renderEffectsMatrix();
   renderMixer();
   renderPattern();
   drawWaveform();
+  writeStoredSession();
+}
+
+function updateTrackFilter(trackIndex, patch) {
+  const track = state.tracks[trackIndex];
+  if (!track) return;
+  track.effects.filter = normalizeFilterSettings({ ...track.effects.filter, ...patch }, track.effects.filter);
+  syncUi();
+  renderEffectsMatrix();
   writeStoredSession();
 }
 
@@ -1247,6 +1510,23 @@ ui.spray.addEventListener("input", () => updateSelectedTrack({ spray: Number(ui.
 ui.pitch.addEventListener("input", () => updateSelectedTrack({ pitch: Number(ui.pitch.value) }));
 ui.chopGate.addEventListener("input", () => updateSelectedTrack({ chopGate: Number(ui.chopGate.value) }));
 ui.reverse.addEventListener("change", () => updateSelectedTrack({ reverse: ui.reverse.checked }));
+ui.filterFrequency.addEventListener("input", () => {
+  updateTrackFilter(state.filterOverlay.trackIndex, { frequency: Number(ui.filterFrequency.value) });
+});
+ui.filterQ.addEventListener("input", () => {
+  updateTrackFilter(state.filterOverlay.trackIndex, { q: Number(ui.filterQ.value) });
+});
+ui.filterTypeRadios.forEach((radio) => {
+  radio.addEventListener("change", () => {
+    if (!radio.checked) return;
+    updateTrackFilter(state.filterOverlay.trackIndex, { type: radio.value });
+  });
+});
+ui.filterOverlayClose.addEventListener("click", () => closeFilterOverlay());
+ui.filterOverlay.addEventListener("click", (event) => {
+  if (!(event.target instanceof HTMLElement)) return;
+  if (event.target.dataset.overlayClose === "true") closeFilterOverlay();
+});
 
 ui.transportToggle.addEventListener("click", async () => {
   try {
@@ -1270,6 +1550,10 @@ ui.transportToggle.addEventListener("click", async () => {
 });
 
 window.addEventListener("keydown", async (event) => {
+  if (event.key === "Escape" && state.filterOverlay.open) {
+    closeFilterOverlay();
+    return;
+  }
   if (event.code !== "Space") return;
   event.preventDefault();
   try {
@@ -1296,6 +1580,7 @@ syncTransportButton();
 syncUi();
 drawWaveform();
 renderTrackSelector();
+renderEffectsMatrix();
 renderMixer();
 renderPattern();
 loadDefaultSample();

@@ -41,7 +41,7 @@
           </div>
         </section>
 
-        <section class="panel">
+        <section class="panel panel-span-2 voice-panel">
           <div class="panel-head">
             <h2>Voice Settings</h2>
           </div>
@@ -145,48 +145,56 @@
           </div>
         </section>
 
-        <div class="sidebar-stack">
-          <section class="panel mixer-panel">
-            <div class="panel-head">
-              <h2>Output Mix</h2>
+        <section class="panel effects-panel">
+          <div class="panel-head">
+            <div class="panel-head-copy">
+              <h2>Effects Matrix</h2>
+              <p>Click to toggle. Double-click and hold for 1s to edit.</p>
             </div>
-            <label class="compact-field mix-volume-control">
-              Mix Volume
+          </div>
+          <div id="effects-matrix" class="effects-matrix"></div>
+        </section>
+
+        <section class="panel mixer-panel">
+          <div class="panel-head">
+            <h2>Output Mix</h2>
+          </div>
+          <label class="compact-field mix-volume-control">
+            Mix Volume
+            <div class="slider-row">
+              <input id="mix-volume" type="range" min="0" max="100" value="90" />
+              <span id="mix-volume-value" class="value-pill">90%</span>
+            </div>
+          </label>
+          <div id="mixer-grid" class="mixer-grid"></div>
+        </section>
+
+        <section class="panel micro-panel">
+          <div class="panel-head">
+            <div class="panel-head-copy">
+              <h2>Playback Control</h2>
+            </div>
+          </div>
+          <div class="control-grid micro-control-grid">
+            <label class="compact-field span-2">
+              BPM
               <div class="slider-row">
-                <input id="mix-volume" type="range" min="0" max="100" value="90" />
-                <span id="mix-volume-value" class="value-pill">90%</span>
+                <input id="bpm" type="range" min="60" max="180" value="112" />
+                <span id="bpm-value" class="value-pill">112</span>
               </div>
             </label>
-            <div id="mixer-grid" class="mixer-grid"></div>
-          </section>
-
-          <section class="panel micro-panel">
-            <div class="panel-head">
-              <div class="panel-head-copy">
-                <h2>Playback Control</h2>
+            <label class="compact-field span-2">
+              Swing
+              <div class="slider-row">
+                <input id="swing" type="range" min="0" max="100" value="0" />
+                <span id="swing-value" class="value-pill">0%</span>
               </div>
+            </label>
+            <div class="transport-single span-2">
+              <button id="transport-toggle" class="primary">Play</button>
             </div>
-            <div class="control-grid micro-control-grid">
-              <label class="compact-field span-2">
-                BPM
-                <div class="slider-row">
-                  <input id="bpm" type="range" min="60" max="180" value="112" />
-                  <span id="bpm-value" class="value-pill">112</span>
-                </div>
-              </label>
-              <label class="compact-field span-2">
-                Swing
-                <div class="slider-row">
-                  <input id="swing" type="range" min="0" max="100" value="0" />
-                  <span id="swing-value" class="value-pill">0%</span>
-                </div>
-              </label>
-              <div class="transport-single span-2">
-                <button id="transport-toggle" class="primary">Play</button>
-              </div>
-            </div>
-          </section>
-        </div>
+          </div>
+        </section>
 
         <section class="panel panel-wide">
           <div class="panel-head panel-head-pattern">
@@ -222,6 +230,50 @@
           <div id="pattern-grid" class="pattern-grid"></div>
         </section>
       </main>
+    </div>
+
+    <div id="filter-overlay" class="overlay-shell is-hidden" aria-hidden="true">
+      <div class="overlay-backdrop" data-overlay-close="true"></div>
+      <section class="overlay-panel" role="dialog" aria-modal="true" aria-labelledby="filter-overlay-title">
+        <div class="panel-head overlay-head">
+          <div class="panel-head-copy">
+            <h2 id="filter-overlay-title">Filter Settings</h2>
+            <p id="filter-overlay-track"></p>
+          </div>
+          <button id="filter-overlay-close" type="button">Close</button>
+        </div>
+        <div class="control-stack overlay-controls">
+          <label class="compact-field">
+            Frequency
+            <div class="slider-row">
+              <input id="filter-frequency" type="range" min="20" max="16000" step="1" value="1200" />
+              <span id="filter-frequency-value" class="value-pill">1.20 kHz</span>
+            </div>
+          </label>
+          <label class="compact-field">
+            Q
+            <div class="slider-row">
+              <input id="filter-q" type="range" min="0.1" max="20" step="0.1" value="0.8" />
+              <span id="filter-q-value" class="value-pill">0.8</span>
+            </div>
+          </label>
+          <fieldset class="radio-group">
+            <legend>Mode</legend>
+            <label class="radio-chip">
+              <input type="radio" name="filter-type" value="lowpass" checked />
+              <span>LP</span>
+            </label>
+            <label class="radio-chip">
+              <input type="radio" name="filter-type" value="bandpass" />
+              <span>BP</span>
+            </label>
+            <label class="radio-chip">
+              <input type="radio" name="filter-type" value="highpass" />
+              <span>HP</span>
+            </label>
+          </fieldset>
+        </div>
+      </section>
     </div>
 
     <script type="module" src="./app.js"></script>
