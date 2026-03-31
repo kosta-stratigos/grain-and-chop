@@ -1195,36 +1195,21 @@ function renderEffectsMatrix() {
   const headerRow = document.createElement("div");
   headerRow.className = "effects-matrix-row effects-matrix-header";
 
-  const corner = document.createElement("div");
-  corner.className = "effects-cell effects-label-cell effects-corner-cell";
-  corner.textContent = "FX";
-  headerRow.append(corner);
-
   state.tracks.forEach((track, index) => {
-    const headerCell = document.createElement("button");
-    headerCell.className = `effects-cell effects-track-head${index === state.selectedTrackIndex ? " active" : ""}`;
+    const headerCell = document.createElement("div");
+    headerCell.className = `effects-axis-label effects-track-head${index === state.selectedTrackIndex ? " active" : ""}`;
     headerCell.textContent = `T${track.id}`;
     applyTrackColor(headerCell, track.color);
-    headerCell.addEventListener("click", () => {
-      state.selectedTrackIndex = index;
-      syncUi();
-      renderTrackSelector();
-      renderEffectsMatrix();
-      renderMixer();
-      renderPattern();
-      drawWaveform();
-      writeStoredSession();
-    });
     headerRow.append(headerCell);
   });
   ui.effectsMatrix.append(headerRow);
 
   EFFECT_KEYS.forEach((effectKey) => {
     const row = document.createElement("div");
-    row.className = "effects-matrix-row";
+    row.className = "effects-matrix-row effects-row";
 
     const labelCell = document.createElement("div");
-    labelCell.className = "effects-cell effects-label-cell";
+    labelCell.className = "effects-axis-label effects-row-label";
     labelCell.textContent = effectKey === "filter" ? "Filter" : effectKey;
     row.append(labelCell);
 
@@ -1236,9 +1221,7 @@ function renderEffectsMatrix() {
       button.textContent = effect.enabled ? formatFilterTypeLabel(effect.type) : "Off";
       button.title = `${track.name} ${effectKey} ${effect.enabled ? "enabled" : "disabled"}`;
 
-      let singleToggleTimer = null;
       let holdTimer = null;
-      let lastPointerUp = 0;
       let holdTriggered = false;
 
       button.addEventListener("click", () => {
@@ -1246,23 +1229,13 @@ function renderEffectsMatrix() {
           holdTriggered = false;
           return;
         }
-        if (singleToggleTimer) return;
-        singleToggleTimer = window.setTimeout(() => {
-          singleToggleTimer = null;
-          track.effects[effectKey].enabled = !track.effects[effectKey].enabled;
-          syncUi();
-          renderEffectsMatrix();
-          writeStoredSession();
-        }, 220);
+        track.effects[effectKey].enabled = !track.effects[effectKey].enabled;
+        syncUi();
+        renderEffectsMatrix();
+        writeStoredSession();
       });
 
       button.addEventListener("pointerdown", () => {
-        const now = performance.now();
-        if (now - lastPointerUp > 320) return;
-        if (singleToggleTimer) {
-          window.clearTimeout(singleToggleTimer);
-          singleToggleTimer = null;
-        }
         holdTriggered = false;
         button.classList.add("is-armed");
         holdTimer = window.setTimeout(() => {
@@ -1278,7 +1251,6 @@ function renderEffectsMatrix() {
           holdTimer = null;
         }
         button.classList.remove("is-armed");
-        lastPointerUp = performance.now();
       };
 
       button.addEventListener("pointerup", cancelHold);

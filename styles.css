@@ -500,8 +500,9 @@ input[type="range"] {
 
 .effects-matrix-row {
   display: grid;
-  grid-template-columns: 58px repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
+  align-items: center;
 }
 
 .effects-cell {
@@ -509,37 +510,27 @@ input[type="range"] {
   border-radius: var(--pane-radius);
 }
 
-.effects-label-cell {
-  display: grid;
-  place-items: center start;
-  padding: 0 10px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.03);
+.effects-axis-label {
+  display: block;
+  padding: 0 2px;
   color: var(--muted);
   font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-}
-
-.effects-corner-cell {
-  place-items: center;
+  line-height: 1.2;
 }
 
 .effects-track-head,
 .effects-toggle {
-  border-radius: var(--pane-radius);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.04);
-  padding: 0;
   font-size: 0.78rem;
 }
 
 .effects-track-head.active {
-  border-color: var(--track-color-strong);
-  background: var(--track-color-soft);
+  color: var(--text);
 }
 
 .effects-toggle.active {
+  border-radius: var(--pane-radius);
   border-color: var(--track-color-strong);
   background: linear-gradient(135deg, var(--track-color-soft), rgba(255, 255, 255, 0.08));
   color: var(--text);
@@ -552,6 +543,25 @@ input[type="range"] {
 .effects-toggle.is-armed {
   outline: 2px solid var(--track-color);
   outline-offset: 1px;
+}
+
+.effects-matrix-header {
+  margin-left: 68px;
+}
+
+.effects-row {
+  grid-template-columns: 58px repeat(4, minmax(0, 1fr));
+}
+
+.effects-row-label {
+  padding-left: 0;
+}
+
+.effects-toggle {
+  border-radius: var(--pane-radius);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  padding: 0;
 }
 
 .overlay-shell {
@@ -809,6 +819,14 @@ input[type="range"] {
   }
 
   .effects-matrix-row {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .effects-matrix-header {
+    margin-left: 60px;
+  }
+
+  .effects-row {
     grid-template-columns: 50px repeat(4, minmax(0, 1fr));
   }
 
