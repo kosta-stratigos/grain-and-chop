@@ -932,9 +932,22 @@ function getTrackVoice(track) {
 }
 
 function getTrackPlaybackSettings(track) {
+  const voice = getTrackVoice(track);
   return {
     ...track,
-    ...getTrackVoice(track),
+    mode: voice.mode,
+    reverse: voice.reverse,
+    grainLocation: voice.grainLocation,
+    voicePlacement: voice.voicePlacement,
+    voicePlaybackMode: voice.voicePlaybackMode,
+    grainSize: voice.grainSize,
+    grainDensity: voice.grainDensity,
+    spray: voice.spray,
+    pitch: voice.pitch,
+    chopGate: voice.chopGate,
+    sliceCount: voice.sliceCount,
+    voiceName: voice.name,
+    voiceId: voice.id,
     trackIndex: track.id - 1,
   };
 }
