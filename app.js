@@ -222,6 +222,7 @@ class PlaybackLayer {
     this.output.gain.value = 0.9;
     this.output.connect(audioContext.destination);
     this.trackBuses = Array.from({ length: TRACK_COUNT }, (_, index) => this.createTrackBus(index));
+    this.trackBuses.forEach((_, index) => this.updateTrackBus(index, this.state.tracks[index]));
   }
 
   createTrackBus(trackIndex) {
@@ -250,7 +251,6 @@ class PlaybackLayer {
       feedbackGain,
       outputGain,
     };
-    this.updateTrackBus(trackIndex, this.state.tracks[trackIndex]);
     return bus;
   }
 
