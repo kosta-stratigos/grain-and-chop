@@ -214,15 +214,107 @@ class SampleLayer {
 }
 
 class PlaybackLayer {
-  constructor(audioContext, sampleLayer) {
+  constructor(audioContext, sampleLayer, state) {
     this.audioContext = audioContext;
     this.sampleLayer = sampleLayer;
+    this.state = state;
     this.output = audioContext.createGain();
     this.output.gain.value = 0.9;
     this.output.connect(audioContext.destination);
+    this.trackBuses = Array.from({ length: TRACK_COUNT }, (_, index) => this.createTrackBus(index));
+  }
+
+  createTrackBus(trackIndex) {
+    const input = this.audioContext.createGain();
+    const filterNode = this.audioContext.createBiquadFilter();
+    const dryGain = this.audioContext.createGain();
+    const delaySend = this.audioContext.createGain();
+    const delayNode = this.audioContext.createDelay(2.4);
+    const delayTone = this.audioContext.createBiquadFilter();
+    const delayWetGain = this.audioContext.createGain();
+    const feedbackGain = this.audioContext.createGain();
+    const outputGain = this.audioContext.createGain();
+
+    outputGain.connect(this.output);
+    delayTone.type = "lowpass";
+
+    const bus = {
+      trackIndex,
+      input,
+      filterNode,
+      dryGain,
+      delaySend,
+      delayNode,
+      delayTone,
+      delayWetGain,
+      feedbackGain,
+      outputGain,
+    };
+    this.updateTrackBus(trackIndex, this.state.tracks[trackIndex]);
+    return bus;
+  }
+
+  updateTrackBus(trackIndex, track = this.state.tracks[trackIndex]) {
+    const bus = this.trackBuses?.[trackIndex];
+    if (!bus || !track) return;
+    const { input, filterNode, dryGain, delaySend, delayNode, delayTone, delayWetGain, feedbackGain, outputGain } = bus;
+
+    input.disconnect();
+    filterNode.disconnect();
+    dryGain.disconnect();
+    delaySend.disconnect();
+    delayNode.disconnect();
+    delayTone.disconnect();
+    delayWetGain.disconnect();
+    feedbackGain.disconnect();
+
+    const filter = track.effects.filter;
+    const delay = track.effects.delay;
+    outputGain.gain.value = track.volume;
+
+    let sourceStage = input;
+    if (filter.enabled) {
+      filterNode.type = filter.type;
+      filterNode.frequency.setValueAtTime(clampFilterFrequency(filter.frequency), this.audioContext.currentTime);
+      filterNode.Q.setValueAtTime(clampFilterQ(filter.q), this.audioContext.currentTime);
+      input.connect(filterNode);
+      sourceStage = filterNode;
+    }
+
+    if (!delay.enabled) {
+      sourceStage.connect(outputGain);
+      return;
+    }
+
+    const mixAmount = clampDelayPercent(delay.mix, 100, 30) / 100;
+    const feedbackAmount = clampDelayPercent(delay.feedback, 95, 35) / 100;
+    const decayAmount = clampDelayPercent(delay.decay, 100, 55) / 100;
+    const toneAmount = clampDelayPercent(delay.tone, 100, 60) / 100;
+    const delayTimeSeconds = clampDelayTime(delay.time) / 1000;
+    const feedbackLoopGain = Math.min(0.94, feedbackAmount * (0.28 + decayAmount * 0.66));
+    const wetLevel = Math.min(1, mixAmount * (0.45 + decayAmount * 0.55));
+    const toneFrequency = 500 * (2 ** (toneAmount * 4.8));
+
+    dryGain.gain.setValueAtTime(1 - mixAmount, this.audioContext.currentTime);
+    delaySend.gain.setValueAtTime(mixAmount, this.audioContext.currentTime);
+    delayNode.delayTime.setValueAtTime(delayTimeSeconds, this.audioContext.currentTime);
+    delayTone.frequency.setValueAtTime(Math.max(500, Math.min(16000, toneFrequency)), this.audioContext.currentTime);
+    delayWetGain.gain.setValueAtTime(wetLevel, this.audioContext.currentTime);
+    feedbackGain.gain.setValueAtTime(feedbackLoopGain, this.audioContext.currentTime);
+
+    sourceStage.connect(dryGain);
+    dryGain.connect(outputGain);
+    sourceStage.connect(delaySend);
+    delaySend.connect(delayNode);
+    delayNode.connect(delayTone);
+    delayTone.connect(delayWetGain);
+    delayWetGain.connect(outputGain);
+    delayTone.connect(feedbackGain);
+    feedbackGain.connect(delayNode);
   }
 
   createVoice({
+    trackIndex,
     when,
     offset,
     duration,
@@ -235,8 +327,6 @@ class PlaybackLayer {
     loopStart = 0,
     loopEnd = 0,
     sustainDuration = null,
-    filter = null,
-    delay = null,
   }) {
     const baseBuffer = this.sampleLayer.buffer;
     const buffer = reverse ? this.sampleLayer.reversedBuffer : baseBuffer;
@@ -256,66 +346,14 @@ class PlaybackLayer {
     voiceGain.gain.setValueAtTime(0.75 * level, when + holdDuration);
     voiceGain.gain.linearRampToValueAtTime(0.0001, when + holdDuration + release);
 
-    let processedNode = source;
-    const nodesToDisconnect = [source, voiceGain];
-
-    if (filter?.enabled) {
-      const filterNode = this.audioContext.createBiquadFilter();
-      filterNode.type = filter.type;
-      filterNode.frequency.setValueAtTime(clampFilterFrequency(filter.frequency), when);
-      filterNode.Q.setValueAtTime(clampFilterQ(filter.q), when);
-      processedNode.connect(filterNode);
-      processedNode = filterNode;
-      nodesToDisconnect.push(filterNode);
-    }
-    processedNode.connect(voiceGain);
-
-    if (delay?.enabled) {
-      const dryGain = this.audioContext.createGain();
-      const delaySend = this.audioContext.createGain();
-      const delayNode = this.audioContext.createDelay(2.4);
-      const toneFilter = this.audioContext.createBiquadFilter();
-      const wetGain = this.audioContext.createGain();
-      const feedbackGain = this.audioContext.createGain();
-      const mixAmount = clampDelayPercent(delay.mix, 100, 30) / 100;
-      const feedbackAmount = clampDelayPercent(delay.feedback, 95, 35) / 100;
-      const decayAmount = clampDelayPercent(delay.decay, 100, 55) / 100;
-      const toneAmount = clampDelayPercent(delay.tone, 100, 60) / 100;
-      const delayTimeSeconds = clampDelayTime(delay.time) / 1000;
-      const feedbackLoopGain = Math.min(0.92, feedbackAmount * (0.35 + decayAmount * 0.6));
-      const wetLevel = mixAmount * (0.3 + decayAmount * 0.7);
-      const toneFrequency = 700 * (2 ** (toneAmount * 4.3));
-
-      dryGain.gain.setValueAtTime(1 - mixAmount, when);
-      delaySend.gain.setValueAtTime(mixAmount, when);
-      delayNode.delayTime.setValueAtTime(delayTimeSeconds, when);
-      toneFilter.type = "lowpass";
-      toneFilter.frequency.setValueAtTime(Math.max(700, Math.min(14000, toneFrequency)), when);
-      wetGain.gain.setValueAtTime(wetLevel, when);
-      feedbackGain.gain.setValueAtTime(feedbackLoopGain, when);
-
-      voiceGain.connect(dryGain);
-      dryGain.connect(this.output);
-      voiceGain.connect(delaySend);
-      delaySend.connect(delayNode);
-      delayNode.connect(toneFilter);
-      toneFilter.connect(wetGain);
-      wetGain.connect(this.output);
-      toneFilter.connect(feedbackGain);
-      feedbackGain.connect(delayNode);
-
-      nodesToDisconnect.push(dryGain, delaySend, delayNode, toneFilter, wetGain, feedbackGain);
-    } else {
-      voiceGain.connect(this.output);
-    }
+    source.connect(voiceGain);
+    const busInput = this.trackBuses?.[trackIndex]?.input ?? this.output;
+    voiceGain.connect(busInput);
 
     const intendedOffset = reverse ? buffer.duration - offset - safeDuration : offset;
     const playbackOffset = Math.max(0, Math.min(maxOffset, intendedOffset));
     const baseStopTime = when + holdDuration + release;
-    const delayTailSeconds = delay?.enabled
-      ? (clampDelayTime(delay.time) / 1000) * (2 + Math.round((clampDelayPercent(delay.feedback, 95, 35) / 100) * 6))
-      : 0;
-    const disconnectDelayMs = Math.ceil((baseStopTime - this.audioContext.currentTime + delayTailSeconds + 0.2) * 1000);
+    const disconnectDelayMs = Math.ceil((baseStopTime - this.audioContext.currentTime + 0.1) * 1000);
 
     if (loop) {
       source.loop = true;
@@ -326,14 +364,16 @@ class PlaybackLayer {
       source.start(when, playbackOffset);
       source.stop(baseStopTime);
       window.setTimeout(() => {
-        nodesToDisconnect.forEach((node) => node.disconnect?.());
+        source.disconnect?.();
+        voiceGain.disconnect?.();
       }, Math.max(0, disconnectDelayMs));
       return true;
     }
     source.start(when, playbackOffset, safeDuration);
     source.stop(when + safeDuration + release);
     window.setTimeout(() => {
-      nodesToDisconnect.forEach((node) => node.disconnect?.());
+      source.disconnect?.();
+      voiceGain.disconnect?.();
     }, Math.max(0, disconnectDelayMs));
     return true;
   }
@@ -360,12 +400,12 @@ class PlaybackLayer {
     if (settings.voicePlaybackMode && settings.voicePlaybackMode !== "one-shot") {
       const smoothLoop = settings.voicePlaybackMode === "smooth-loop";
       return this.createVoice({
+        trackIndex: settings.trackIndex,
         when,
         offset: Math.max(0, loopPosition),
         duration: Math.min(grainDuration, buffer.duration - loopPosition),
         rate,
         reverse: settings.reverse,
-        filter: settings.filter,
         attack: smoothLoop ? Math.min(0.02, grainDuration * 0.2) : 0.002,
         release: smoothLoop ? Math.min(0.03, grainDuration * 0.28) : 0.004,
         level: settings.level ?? 1,
@@ -382,12 +422,12 @@ class PlaybackLayer {
       const position = Math.max(startTime, Math.min(maxPosition, sliceStart + jitter));
       triggered =
         this.createVoice({
+          trackIndex: settings.trackIndex,
           when: when + index * (1 / Math.max(1, settings.density)),
           offset: Math.max(0, position),
           duration: Math.min(grainDuration, buffer.duration - position),
           rate,
           reverse: settings.reverse,
-          filter: settings.filter,
           attack: grainDuration * 0.2,
           release: grainDuration * 0.35,
           level: settings.level ?? 1,
@@ -410,15 +450,15 @@ class PlaybackLayer {
     if (track.voicePlaybackMode && track.voicePlaybackMode !== "one-shot") {
       const smoothLoop = track.voicePlaybackMode === "smooth-loop";
       return this.createVoice({
+        trackIndex: track.id - 1,
         when,
         offset,
         duration: Math.max(0.03, Math.min(baseSliceDuration, endTime - offset)),
         rate,
         reverse: track.reverse,
-        filter: track.effects.filter,
         attack: smoothLoop ? 0.01 : 0.002,
         release: smoothLoop ? 0.02 : 0.004,
-        level: track.volume,
+        level: 1,
         loop: true,
         loopStart: offset,
         loopEnd: Math.min(endTime, offset + baseSliceDuration),
@@ -426,15 +466,15 @@ class PlaybackLayer {
       });
     }
     return this.createVoice({
+      trackIndex: track.id - 1,
       when,
       offset,
       duration: Math.max(0.03, Math.min(baseSliceDuration, endTime - offset)),
       rate,
       reverse: track.reverse,
-      filter: track.effects.filter,
       attack: 0.004,
       release: 0.03,
-      level: track.volume,
+      level: 1,
     });
   }
 
@@ -442,18 +482,17 @@ class PlaybackLayer {
     if (track.mode === "granular") {
       return this.triggerGranular(
         {
+          trackIndex: track.id - 1,
           grainSizeMs: track.grainSize,
           density: track.grainDensity,
           spray: track.spray / 100,
           pitch: track.pitch,
           reverse: track.reverse,
-          level: track.volume,
+          level: 1,
           sliceCount: track.sliceCount,
           grainLocation: track.grainLocation,
           voicePlacement: track.voicePlacement,
           voicePlaybackMode: track.voicePlaybackMode,
-          filter: track.effects.filter,
-          delay: track.effects.delay,
         },
         when,
         sliceIndex,
@@ -805,7 +844,7 @@ async function loadDefaultSample() {
 function ensureAudio() {
   if (!state.audioContext) {
     state.audioContext = createAudioContext();
-    state.playback = new PlaybackLayer(state.audioContext, state.sample);
+    state.playback = new PlaybackLayer(state.audioContext, state.sample, state);
     state.transport = new TransportLayer(state.audioContext, state.playback, state);
     state.transport.onStep = updateCurrentStep;
     state.playback.output.gain.value = state.mixVolume;
@@ -1053,7 +1092,7 @@ async function loadSampleFromLibrary(sampleEntry) {
     const response = await fetch(sampleEntry.url);
     if (!response.ok) throw new Error(`request failed (${response.status})`);
     const data = await response.arrayBuffer();
-    await state.sample.loadArrayBuffer(data, state.audioContext);
+    await state.sample.loadArrayBuffer(data, state.audioContext ?? getDecodeAudioContext());
   }, sampleEntry.name);
   if (loaded) closeSampleBrowser();
 }
@@ -1128,6 +1167,7 @@ function updateOverviewRegionFromPointer(clientX) {
 
 function openFilterOverlay(trackIndex) {
   state.selectedTrackIndex = trackIndex;
+  state.delayOverlay.open = false;
   state.filterOverlay = {
     open: true,
     trackIndex,
@@ -1149,6 +1189,7 @@ function closeFilterOverlay() {
 
 function openDelayOverlay(trackIndex) {
   state.selectedTrackIndex = trackIndex;
+  state.filterOverlay.open = false;
   state.delayOverlay = {
     open: true,
     trackIndex,
@@ -1524,6 +1565,7 @@ function renderMixer() {
     slider.value = String(Math.round(track.volume * 100));
     slider.addEventListener("input", () => {
       track.volume = Number(slider.value) / 100;
+      state.playback?.updateTrackBus(index, track);
       renderMixer();
       writeStoredSession();
     });
@@ -1577,6 +1619,7 @@ function renderEffectsMatrix() {
           return;
         }
         track.effects[effectKey].enabled = !track.effects[effectKey].enabled;
+        state.playback?.updateTrackBus(trackIndex, track);
         syncUi();
         renderEffectsMatrix();
         writeStoredSession();
@@ -1702,6 +1745,7 @@ function syncUi() {
 function updateSelectedTrack(patch) {
   Object.assign(getSelectedTrack(), patch);
   if ("grainLocation" in patch || "sliceCount" in patch || "rate" in patch) resetTrackPlaybackState(state.selectedTrackIndex);
+  state.playback?.updateTrackBus(state.selectedTrackIndex, getSelectedTrack());
   syncUi();
   renderTrackSelector();
   renderEffectsMatrix();
@@ -1715,6 +1759,7 @@ function updateTrackFilter(trackIndex, patch) {
   const track = state.tracks[trackIndex];
   if (!track) return;
   track.effects.filter = normalizeFilterSettings({ ...track.effects.filter, ...patch }, track.effects.filter);
+  state.playback?.updateTrackBus(trackIndex, track);
   syncUi();
   renderEffectsMatrix();
   writeStoredSession();
@@ -1724,6 +1769,7 @@ function updateTrackDelay(trackIndex, patch) {
   const track = state.tracks[trackIndex];
   if (!track) return;
   track.effects.delay = normalizeDelaySettings({ ...track.effects.delay, ...patch }, track.effects.delay);
+  state.playback?.updateTrackBus(trackIndex, track);
   syncUi();
   renderEffectsMatrix();
   writeStoredSession();
