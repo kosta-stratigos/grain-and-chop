@@ -482,6 +482,9 @@ const state = {
   },
   defaultSampleLoaded: false,
   defaultSampleLoadPromise: null,
+  sampleLoading: false,
+  sampleLoadingDots: 1,
+  sampleLoadingIntervalId: null,
   currentSampleName: "",
   fillDensity: 50,
   mixVolume: 0.9,
@@ -630,6 +633,23 @@ function setDiagnostics(message, level = "warn") {
   if (!ui.diagnostics) return;
   ui.diagnostics.textContent = `Status: ${message}`;
   ui.diagnostics.className = `diagnostics ${level}`;
+}
+
+function syncSampleLoadingAnimation() {
+  if (state.sampleLoading) {
+    if (state.sampleLoadingIntervalId) return;
+    state.sampleLoadingIntervalId = window.setInterval(() => {
+      state.sampleLoadingDots = (state.sampleLoadingDots % 3) + 1;
+      if (!state.sample.buffer) drawWaveform();
+    }, 400);
+    return;
+  }
+
+  if (state.sampleLoadingIntervalId) {
+    window.clearInterval(state.sampleLoadingIntervalId);
+    state.sampleLoadingIntervalId = null;
+  }
+  state.sampleLoadingDots = 1;
 }
 
 function hasSoloTrack() {
@@ -840,6 +860,9 @@ function closeSampleBrowser() {
 
 async function loadSampleSource(loader, sampleName, { preview = true } = {}) {
   try {
+    state.sampleLoading = true;
+    syncSampleLoadingAnimation();
+    drawWaveform();
     await ensureAudio();
     setDiagnostics(`loading ${sampleName}...`, "warn");
     const restoredStart = state.sample.regionStart;
@@ -868,6 +891,10 @@ async function loadSampleSource(loader, sampleName, { preview = true } = {}) {
     setDiagnostics(`load failed for ${sampleName}: ${error.message}`, "error");
     if (ui.sampleStatus) ui.sampleStatus.textContent = "This file could not be decoded by the browser.";
     return false;
+  } finally {
+    state.sampleLoading = false;
+    syncSampleLoadingAnimation();
+    drawWaveform();
   }
 }
 
@@ -1106,7 +1133,10 @@ function drawWaveform() {
   if (!state.sample.buffer) {
     ctx.fillStyle = "rgba(232,242,255,0.65)";
     ctx.font = '18px "IBM Plex Sans", "Avenir Next", sans-serif';
-    ctx.fillText("Waveform will appear here after you load a sample.", viewportLeft, height / 2);
+    const emptyStateMessage = state.sampleLoading
+      ? `Loading sample${".".repeat(state.sampleLoadingDots)}`
+      : "Waveform will appear here after you load a sample.";
+    ctx.fillText(emptyStateMessage, viewportLeft, height / 2);
     drawWaveformOverview();
     return;
   }
