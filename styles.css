@@ -97,7 +97,7 @@ h1 {
   margin-bottom: 0;
   white-space: nowrap;
   letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-weight: 300;
 }
 
 .subhead {
@@ -192,7 +192,7 @@ h2 {
   font-family: var(--font-display);
   font-size: 0.98rem;
   letter-spacing: 0.05em;
-  text-transform: uppercase;
+  font-weight: 300;
 }
 
 .panel-head p,
