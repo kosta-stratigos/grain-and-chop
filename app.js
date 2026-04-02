@@ -87,6 +87,22 @@ const TRACK_RATE_VALUES = Object.keys(TRACK_RATE_SPANS);
 const EFFECT_KEYS = ["filter", "delay"];
 const FILTER_TYPES = ["lowpass", "bandpass", "highpass"];
 
+function updateRangeFill(input) {
+  if (!(input instanceof HTMLInputElement) || input.type !== "range") return;
+  const min = Number(input.min || 0);
+  const max = Number(input.max || 100);
+  const value = Number(input.value || min);
+  const span = Math.max(1, max - min);
+  const percent = ((value - min) / span) * 100;
+  input.style.setProperty("--range-fill", `${percent}%`);
+}
+
+function refreshRangeFills(root = document) {
+  root.querySelectorAll('input[type="range"]').forEach((input) => {
+    updateRangeFill(input);
+  });
+}
+
 function clampDelayTime(value) {
   return Math.max(40, Math.min(1200, Number(value) || 280));
 }
@@ -1629,6 +1645,7 @@ function renderMixer() {
       renderMixer();
       writeStoredSession();
     });
+    updateRangeFill(slider);
     controls.append(slider);
 
     const actionStack = document.createElement("div");
@@ -1842,6 +1859,7 @@ function syncUi() {
   if (!ui.sampleStatus) return;
 
   ui.sampleStatus.textContent = state.sample.buffer ? state.currentSampleName : "";
+  refreshRangeFills();
 }
 
 function updateSelectedTrack(patch) {
@@ -1916,6 +1934,11 @@ ui.sampleBrowserInput.addEventListener("change", async (event) => {
   if (!file) return;
   await loadSampleFromFile(file);
   ui.sampleBrowserInput.value = "";
+});
+
+document.addEventListener("input", (event) => {
+  if (!(event.target instanceof HTMLInputElement) || event.target.type !== "range") return;
+  updateRangeFill(event.target);
 });
 
 ui.regionStart.addEventListener("input", () => {
@@ -2146,4 +2169,5 @@ renderTrackSelector();
 renderEffectsMatrix();
 renderMixer();
 renderPattern();
+refreshRangeFills();
 loadDefaultSample();

@@ -461,7 +461,15 @@ input[type="range"] {
   width: 100%;
   appearance: none;
   -webkit-appearance: none;
-  background: transparent;
+  height: 10px;
+  border-radius: 3px;
+  background: linear-gradient(
+    90deg,
+    var(--accent) 0%,
+    var(--accent-2) var(--range-fill, 0%),
+    rgba(255, 255, 255, 0.1) var(--range-fill, 0%),
+    rgba(255, 255, 255, 0.1) 100%
+  );
 }
 
 select {
@@ -489,7 +497,7 @@ input[type="range"]::-webkit-slider-runnable-track {
   height: 4px;
   border: 0;
   border-radius: 3px;
-  background: linear-gradient(90deg, rgba(79, 196, 184, 0.38), rgba(111, 169, 255, 0.34));
+  background: transparent;
 }
 
 input[type="range"]::-webkit-slider-thumb {
@@ -508,7 +516,14 @@ input[type="range"]::-moz-range-track {
   height: 4px;
   border: 0;
   border-radius: 3px;
-  background: linear-gradient(90deg, rgba(79, 196, 184, 0.38), rgba(111, 169, 255, 0.34));
+  background: transparent;
+}
+
+input[type="range"]::-moz-range-progress {
+  height: 4px;
+  border: 0;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
 }
 
 input[type="range"]::-moz-range-thumb {
