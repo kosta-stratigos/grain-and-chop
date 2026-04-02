@@ -1,20 +1,26 @@
 :root {
   color-scheme: dark;
-  --bg: #09111f;
-  --bg2: #12233e;
-  --panel: rgba(7, 16, 29, 0.84);
-  --line: rgba(159, 198, 255, 0.18);
-  --text: #e8f2ff;
-  --muted: #9db3d4;
-  --accent: #59d0ff;
-  --accent-2: #ffb84d;
-  --danger: #ff7b7b;
-  --step-off: rgba(89, 208, 255, 0.12);
-  --step-on: linear-gradient(135deg, #59d0ff, #ffb84d);
-  --track-color: #59d0ff;
-  --track-color-soft: rgba(89, 208, 255, 0.18);
-  --track-color-strong: rgba(89, 208, 255, 0.34);
+  --bg: #06130f;
+  --bg2: #0d221b;
+  --bg3: #123126;
+  --panel: rgba(6, 20, 16, 0.82);
+  --panel-strong: rgba(7, 26, 20, 0.94);
+  --line: rgba(126, 205, 185, 0.18);
+  --line-strong: rgba(126, 205, 185, 0.34);
+  --text: #edf8f2;
+  --muted: #9ebdb2;
+  --accent: #4fc4b8;
+  --accent-2: #6fa9ff;
+  --accent-3: #ffaf5f;
+  --danger: #ff8b7d;
+  --step-off: rgba(79, 196, 184, 0.11);
+  --step-on: linear-gradient(135deg, #4fc4b8, #ffaf5f);
+  --track-color: #6fa9ff;
+  --track-color-soft: rgba(111, 169, 255, 0.16);
+  --track-color-strong: rgba(111, 169, 255, 0.34);
   --pane-radius: 3px;
+  --font-display: "Lexend Deca", "Avenir Next", sans-serif;
+  --font-body: "Quicksand", "Avenir Next", sans-serif;
 }
 
 
@@ -25,12 +31,15 @@
 body {
   margin: 0;
   min-height: 100vh;
-  font-family: "IBM Plex Sans", "Avenir Next", sans-serif;
+  font-family: var(--font-body);
   background:
-    radial-gradient(circle at top left, rgba(89, 208, 255, 0.16), transparent 28%),
-    radial-gradient(circle at top right, rgba(255, 184, 77, 0.12), transparent 32%),
-    linear-gradient(160deg, var(--bg), var(--bg2));
+    radial-gradient(circle at 12% 10%, rgba(79, 196, 184, 0.18), transparent 26%),
+    radial-gradient(circle at 82% 14%, rgba(111, 169, 255, 0.14), transparent 24%),
+    radial-gradient(circle at 76% 82%, rgba(255, 175, 95, 0.14), transparent 20%),
+    radial-gradient(circle at 24% 86%, rgba(48, 110, 93, 0.2), transparent 28%),
+    linear-gradient(150deg, #04100d 0%, var(--bg) 24%, var(--bg2) 58%, var(--bg3) 100%);
   color: var(--text);
+  letter-spacing: 0.01em;
 }
 
 button,
@@ -48,10 +57,14 @@ select {
 .hero,
 .panel {
   border: 1px solid var(--line);
-  background: var(--panel);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 38%),
+    var(--panel);
   backdrop-filter: blur(20px);
   border-radius: var(--pane-radius);
-  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.24);
+  box-shadow:
+    0 18px 60px rgba(0, 0, 0, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
 .hero {
@@ -78,16 +91,20 @@ h3 {
 }
 
 h1 {
+  font-family: var(--font-display);
   font-size: clamp(1.2rem, 2.2vw, 1.9rem);
   line-height: 1;
   margin-bottom: 0;
   white-space: nowrap;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .subhead {
   max-width: none;
   color: var(--muted);
   font-size: 0.88rem;
+  font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -102,24 +119,26 @@ h1 {
 
 button,
 .file-picker {
+  font-family: var(--font-display);
   border: 1px solid var(--line);
   border-radius: 999px;
   color: var(--text);
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.035);
   padding: 8px 12px;
   cursor: pointer;
   transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+  letter-spacing: 0.03em;
 }
 
 button:hover,
 .file-picker:hover {
   transform: translateY(-1px);
-  border-color: rgba(89, 208, 255, 0.5);
+  border-color: rgba(79, 196, 184, 0.52);
 }
 
 button.primary,
 .file-picker.primary {
-  background: linear-gradient(135deg, rgba(89, 208, 255, 0.18), rgba(255, 184, 77, 0.18));
+  background: linear-gradient(135deg, rgba(79, 196, 184, 0.22), rgba(111, 169, 255, 0.14) 58%, rgba(255, 175, 95, 0.18));
 }
 
 .file-picker input {
@@ -170,7 +189,10 @@ button.primary,
 }
 
 h2 {
+  font-family: var(--font-display);
   font-size: 0.98rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 
 .panel-head p,
@@ -184,7 +206,7 @@ h2 {
   padding: 7px 10px;
   border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.03);
   color: var(--muted);
   font-size: 0.8rem;
   line-height: 1.2;
@@ -212,9 +234,9 @@ h2 {
   height: auto;
   border-radius: var(--pane-radius);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent),
-    rgba(0, 0, 0, 0.18);
-  border: 1px solid rgba(255, 255, 255, 0.04);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent),
+    rgba(0, 0, 0, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 #waveform-overview.is-region-draggable {
@@ -248,7 +270,7 @@ h2 {
   padding: 8px;
   border-radius: var(--pane-radius);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .mixer-strip.active {
@@ -294,6 +316,9 @@ h2 {
   color: var(--text);
   font-size: 0.76rem;
   font-weight: 600;
+  font-family: var(--font-display);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .mixer-value {
@@ -311,7 +336,7 @@ h2 {
 .track-chip {
   border-radius: var(--pane-radius);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.03);
   padding: 6px 8px;
   display: block;
   align-items: center;
@@ -338,6 +363,9 @@ h2 {
   color: var(--text);
   font-size: 0.78rem;
   font-weight: 600;
+  font-family: var(--font-display);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   white-space: nowrap;
 }
 
@@ -365,12 +393,15 @@ h2 {
   display: grid;
   gap: 10px;
   padding: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(126, 205, 185, 0.16);
   border-radius: var(--pane-radius);
-  background: rgba(255, 255, 255, 0.025);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 36%),
+    rgba(255, 255, 255, 0.02);
 }
 
 .control-group-head h3 {
+  font-family: var(--font-display);
   font-size: 0.75rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -388,6 +419,7 @@ label,
   gap: 4px;
   color: var(--muted);
   font-size: 0.82rem;
+  font-weight: 600;
 }
 
 .compact-field {
@@ -419,7 +451,7 @@ label,
   padding: 5px 8px;
   border-radius: var(--pane-radius);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.04);
   color: var(--text);
   font-size: 0.76rem;
   text-align: center;
@@ -435,7 +467,7 @@ select {
   padding: 6px 10px;
   border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.04);
   color: var(--text);
 }
 
@@ -453,7 +485,7 @@ input[type="range"] {
   padding: 6px 10px;
   border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.04);
   color: var(--text);
 }
 
@@ -522,6 +554,7 @@ input[type="range"] {
   padding: 0 2px;
   color: var(--muted);
   font-size: 0.72rem;
+  font-family: var(--font-display);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   line-height: 1.2;
@@ -568,7 +601,7 @@ input[type="range"] {
 .effects-toggle {
   border-radius: var(--pane-radius);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.03);
   padding: 0;
 }
 
@@ -587,7 +620,7 @@ input[type="range"] {
 .overlay-backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(2, 7, 14, 0.72);
+  background: rgba(2, 10, 9, 0.76);
   backdrop-filter: blur(8px);
 }
 
@@ -598,7 +631,9 @@ input[type="range"] {
   padding: 20px;
   border: 1px solid var(--line);
   border-radius: var(--pane-radius);
-  background: rgba(7, 16, 29, 0.96);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 34%),
+    var(--panel-strong);
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
 }
 
@@ -688,7 +723,7 @@ input[type="range"] {
   padding: 8px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--pane-radius);
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.03);
   color: var(--muted);
   font-size: 0.78rem;
 }
@@ -749,7 +784,7 @@ input[type="range"] {
   padding: 0 10px;
   border-radius: var(--pane-radius);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .pattern-row-label.active {
@@ -761,6 +796,9 @@ input[type="range"] {
   color: var(--text);
   font-size: 0.78rem;
   font-weight: 600;
+  font-family: var(--font-display);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .pattern-row-mode {
@@ -774,7 +812,7 @@ input[type="range"] {
   padding: 8px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--pane-radius);
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.03);
   color: var(--muted);
   font-size: 0.78rem;
   min-width: 148px;
@@ -796,8 +834,8 @@ input[type="range"] {
 }
 
 .step.active {
-  background: linear-gradient(135deg, var(--track-color), rgba(255, 255, 255, 0.72));
-  color: #04111d;
+  background: linear-gradient(135deg, var(--track-color), rgba(255, 175, 95, 0.8));
+  color: #04110f;
   border-color: transparent;
 }
 
