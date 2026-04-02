@@ -431,6 +431,17 @@ function createAudioContext() {
   return new AudioContext();
 }
 
+function createDecodeAudioContext() {
+  const OfflineCtor = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+  if (OfflineCtor) return new OfflineCtor(1, 2, 44100);
+  return new AudioContext();
+}
+
+function getDecodeAudioContext() {
+  if (!state.decodeAudioContext) state.decodeAudioContext = createDecodeAudioContext();
+  return state.decodeAudioContext;
+}
+
 function createTrack(id) {
   return {
     id,
@@ -458,6 +469,7 @@ function createTrack(id) {
 
 const state = {
   audioContext: null,
+  decodeAudioContext: null,
   sample: new SampleLayer(),
   playback: null,
   transport: null,
@@ -483,7 +495,7 @@ const state = {
   defaultSampleLoaded: false,
   defaultSampleLoadPromise: null,
   sampleLoading: false,
-  sampleLoadingDots: 1,
+  sampleLoadingDots: 0,
   sampleLoadingIntervalId: null,
   currentSampleName: "",
   fillDensity: 50,
@@ -639,7 +651,7 @@ function syncSampleLoadingAnimation() {
   if (state.sampleLoading) {
     if (state.sampleLoadingIntervalId) return;
     state.sampleLoadingIntervalId = window.setInterval(() => {
-      state.sampleLoadingDots = (state.sampleLoadingDots % 3) + 1;
+      state.sampleLoadingDots = (state.sampleLoadingDots + 1) % 4;
       if (!state.sample.buffer) drawWaveform();
     }, 400);
     return;
@@ -649,7 +661,7 @@ function syncSampleLoadingAnimation() {
     window.clearInterval(state.sampleLoadingIntervalId);
     state.sampleLoadingIntervalId = null;
   }
-  state.sampleLoadingDots = 1;
+  state.sampleLoadingDots = 0;
 }
 
 function hasSoloTrack() {
@@ -667,20 +679,12 @@ async function loadDefaultSample() {
 
   state.defaultSampleLoadPromise = (async () => {
     try {
-      if (!state.audioContext) {
-        state.audioContext = createAudioContext();
-        state.playback = new PlaybackLayer(state.audioContext, state.sample);
-        state.transport = new TransportLayer(state.audioContext, state.playback, state);
-        state.transport.onStep = updateCurrentStep;
-        state.playback.output.gain.value = state.mixVolume;
-      }
-
       await loadSampleSource(async () => {
         const response = await fetch(DEFAULT_SAMPLE_URL);
         if (!response.ok) throw new Error(`request failed (${response.status})`);
         const data = await response.arrayBuffer();
-        await state.sample.loadArrayBuffer(data, state.audioContext);
-      }, DEFAULT_SAMPLE_NAME, { preview: false });
+        await state.sample.loadArrayBuffer(data, getDecodeAudioContext());
+      }, DEFAULT_SAMPLE_NAME, { preview: false, ensureAudioReady: false });
     } catch (error) {
       console.error(`Default sample load failed: ${error.message}`);
     } finally {
@@ -858,12 +862,12 @@ function closeSampleBrowser() {
   syncSampleBrowserOverlay();
 }
 
-async function loadSampleSource(loader, sampleName, { preview = true } = {}) {
+async function loadSampleSource(loader, sampleName, { preview = true, ensureAudioReady = true } = {}) {
   try {
     state.sampleLoading = true;
     syncSampleLoadingAnimation();
     drawWaveform();
-    await ensureAudio();
+    if (ensureAudioReady) await ensureAudio();
     setDiagnostics(`loading ${sampleName}...`, "warn");
     const restoredStart = state.sample.regionStart;
     const restoredEnd = state.sample.regionEnd;
