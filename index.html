@@ -147,7 +147,7 @@
           <div class="panel-head">
             <div class="panel-head-copy">
               <h2>Effects Matrix</h2>
-              <p>Click to toggle. Double-click and hold for 1s to edit.</p>
+              <p>Click to toggle. Hold for 1s to edit.</p>
             </div>
           </div>
           <div id="effects-matrix" class="effects-matrix"></div>
@@ -270,6 +270,56 @@
               <span>HP</span>
             </label>
           </fieldset>
+        </div>
+      </section>
+    </div>
+
+    <div id="delay-overlay" class="overlay-shell is-hidden" aria-hidden="true">
+      <div class="overlay-backdrop" data-delay-overlay-close="true"></div>
+      <section class="overlay-panel" role="dialog" aria-modal="true" aria-labelledby="delay-overlay-title">
+        <div class="panel-head overlay-head">
+          <div class="panel-head-copy">
+            <h2 id="delay-overlay-title">Delay Settings</h2>
+            <p id="delay-overlay-track"></p>
+          </div>
+          <button id="delay-overlay-close" type="button">Close</button>
+        </div>
+        <div class="control-stack overlay-controls">
+          <label class="compact-field">
+            Time
+            <div class="slider-row">
+              <input id="delay-time" type="range" min="40" max="1200" step="1" value="280" />
+              <span id="delay-time-value" class="value-pill">280 ms</span>
+            </div>
+          </label>
+          <label class="compact-field">
+            Feedback
+            <div class="slider-row">
+              <input id="delay-feedback" type="range" min="0" max="95" step="1" value="35" />
+              <span id="delay-feedback-value" class="value-pill">35%</span>
+            </div>
+          </label>
+          <label class="compact-field">
+            Decay
+            <div class="slider-row">
+              <input id="delay-decay" type="range" min="0" max="100" step="1" value="55" />
+              <span id="delay-decay-value" class="value-pill">55%</span>
+            </div>
+          </label>
+          <label class="compact-field">
+            Tone
+            <div class="slider-row">
+              <input id="delay-tone" type="range" min="0" max="100" step="1" value="60" />
+              <span id="delay-tone-value" class="value-pill">60%</span>
+            </div>
+          </label>
+          <label class="compact-field">
+            Mix
+            <div class="slider-row">
+              <input id="delay-mix" type="range" min="0" max="100" step="1" value="30" />
+              <span id="delay-mix-value" class="value-pill">30%</span>
+            </div>
+          </label>
         </div>
       </section>
     </div>

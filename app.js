@@ -44,6 +44,19 @@ const ui = {
   filterQ: document.querySelector("#filter-q"),
   filterQValue: document.querySelector("#filter-q-value"),
   filterTypeRadios: Array.from(document.querySelectorAll('input[name="filter-type"]')),
+  delayOverlay: document.querySelector("#delay-overlay"),
+  delayOverlayTrack: document.querySelector("#delay-overlay-track"),
+  delayOverlayClose: document.querySelector("#delay-overlay-close"),
+  delayTime: document.querySelector("#delay-time"),
+  delayTimeValue: document.querySelector("#delay-time-value"),
+  delayFeedback: document.querySelector("#delay-feedback"),
+  delayFeedbackValue: document.querySelector("#delay-feedback-value"),
+  delayDecay: document.querySelector("#delay-decay"),
+  delayDecayValue: document.querySelector("#delay-decay-value"),
+  delayTone: document.querySelector("#delay-tone"),
+  delayToneValue: document.querySelector("#delay-tone-value"),
+  delayMix: document.querySelector("#delay-mix"),
+  delayMixValue: document.querySelector("#delay-mix-value"),
   bpm: document.querySelector("#bpm"),
   bpmValue: document.querySelector("#bpm-value"),
   swing: document.querySelector("#swing"),
@@ -70,8 +83,16 @@ const TRACK_COUNT = 4;
 const TRACK_COLORS = ["#59d0ff", "#ff8f5a", "#8dff7a", "#ffd34d"];
 const TRACK_RATE_SPANS = { "1/1": 32, "1/2": 16, "1/4": 8, "1/8": 4, "1/16": 2, "1/32": 1 };
 const TRACK_RATE_VALUES = Object.keys(TRACK_RATE_SPANS);
-const EFFECT_KEYS = ["filter"];
+const EFFECT_KEYS = ["filter", "delay"];
 const FILTER_TYPES = ["lowpass", "bandpass", "highpass"];
+
+function clampDelayTime(value) {
+  return Math.max(40, Math.min(1200, Number(value) || 280));
+}
+
+function clampDelayPercent(value, max = 100, fallback = 0) {
+  return Math.max(0, Math.min(max, Number(value) || fallback));
+}
 
 function clampFilterFrequency(value) {
   return Math.max(20, Math.min(16000, Number(value) || 1200));
@@ -90,6 +111,17 @@ function createDefaultFilterSettings() {
   };
 }
 
+function createDefaultDelaySettings() {
+  return {
+    enabled: false,
+    time: 280,
+    feedback: 35,
+    decay: 55,
+    tone: 60,
+    mix: 30,
+  };
+}
+
 function normalizeFilterSettings(source = {}, fallback = createDefaultFilterSettings()) {
   return {
     enabled: Boolean(source.enabled),
@@ -99,9 +131,21 @@ function normalizeFilterSettings(source = {}, fallback = createDefaultFilterSett
   };
 }
 
+function normalizeDelaySettings(source = {}, fallback = createDefaultDelaySettings()) {
+  return {
+    enabled: Boolean(source.enabled),
+    time: clampDelayTime(source.time ?? fallback.time),
+    feedback: clampDelayPercent(source.feedback ?? fallback.feedback, 95, fallback.feedback),
+    decay: clampDelayPercent(source.decay ?? fallback.decay, 100, fallback.decay),
+    tone: clampDelayPercent(source.tone ?? fallback.tone, 100, fallback.tone),
+    mix: clampDelayPercent(source.mix ?? fallback.mix, 100, fallback.mix),
+  };
+}
+
 function createTrackEffects(source = {}) {
   return {
     filter: normalizeFilterSettings(source.filter),
+    delay: normalizeDelaySettings(source.delay),
   };
 }
 
@@ -192,6 +236,7 @@ class PlaybackLayer {
     loopEnd = 0,
     sustainDuration = null,
     filter = null,
+    delay = null,
   }) {
     const baseBuffer = this.sampleLayer.buffer;
     const buffer = reverse ? this.sampleLayer.reversedBuffer : baseBuffer;
@@ -204,26 +249,74 @@ class PlaybackLayer {
     const safeDuration = Math.max(0.02, Math.min(duration, buffer.duration));
     const maxOffset = Math.max(0, buffer.duration - safeDuration);
 
-    const gainNode = this.audioContext.createGain();
+    const voiceGain = this.audioContext.createGain();
     const holdDuration = loop ? Math.max(safeDuration, sustainDuration ?? safeDuration) : safeDuration;
-    gainNode.gain.setValueAtTime(0.0001, when);
-    gainNode.gain.linearRampToValueAtTime(0.75 * level, when + attack);
-    gainNode.gain.setValueAtTime(0.75 * level, when + holdDuration);
-    gainNode.gain.linearRampToValueAtTime(0.0001, when + holdDuration + release);
+    voiceGain.gain.setValueAtTime(0.0001, when);
+    voiceGain.gain.linearRampToValueAtTime(0.75 * level, when + attack);
+    voiceGain.gain.setValueAtTime(0.75 * level, when + holdDuration);
+    voiceGain.gain.linearRampToValueAtTime(0.0001, when + holdDuration + release);
+
+    let processedNode = source;
+    const nodesToDisconnect = [source, voiceGain];
 
     if (filter?.enabled) {
       const filterNode = this.audioContext.createBiquadFilter();
       filterNode.type = filter.type;
       filterNode.frequency.setValueAtTime(clampFilterFrequency(filter.frequency), when);
       filterNode.Q.setValueAtTime(clampFilterQ(filter.q), when);
-      source.connect(filterNode);
-      filterNode.connect(gainNode);
-    } else {
-      source.connect(gainNode);
+      processedNode.connect(filterNode);
+      processedNode = filterNode;
+      nodesToDisconnect.push(filterNode);
     }
-    gainNode.connect(this.output);
+    processedNode.connect(voiceGain);
+
+    if (delay?.enabled) {
+      const dryGain = this.audioContext.createGain();
+      const delaySend = this.audioContext.createGain();
+      const delayNode = this.audioContext.createDelay(2.4);
+      const toneFilter = this.audioContext.createBiquadFilter();
+      const wetGain = this.audioContext.createGain();
+      const feedbackGain = this.audioContext.createGain();
+      const mixAmount = clampDelayPercent(delay.mix, 100, 30) / 100;
+      const feedbackAmount = clampDelayPercent(delay.feedback, 95, 35) / 100;
+      const decayAmount = clampDelayPercent(delay.decay, 100, 55) / 100;
+      const toneAmount = clampDelayPercent(delay.tone, 100, 60) / 100;
+      const delayTimeSeconds = clampDelayTime(delay.time) / 1000;
+      const feedbackLoopGain = Math.min(0.92, feedbackAmount * (0.35 + decayAmount * 0.6));
+      const wetLevel = mixAmount * (0.3 + decayAmount * 0.7);
+      const toneFrequency = 700 * (2 ** (toneAmount * 4.3));
+
+      dryGain.gain.setValueAtTime(1 - mixAmount, when);
+      delaySend.gain.setValueAtTime(mixAmount, when);
+      delayNode.delayTime.setValueAtTime(delayTimeSeconds, when);
+      toneFilter.type = "lowpass";
+      toneFilter.frequency.setValueAtTime(Math.max(700, Math.min(14000, toneFrequency)), when);
+      wetGain.gain.setValueAtTime(wetLevel, when);
+      feedbackGain.gain.setValueAtTime(feedbackLoopGain, when);
+
+      voiceGain.connect(dryGain);
+      dryGain.connect(this.output);
+      voiceGain.connect(delaySend);
+      delaySend.connect(delayNode);
+      delayNode.connect(toneFilter);
+      toneFilter.connect(wetGain);
+      wetGain.connect(this.output);
+      toneFilter.connect(feedbackGain);
+      feedbackGain.connect(delayNode);
+
+      nodesToDisconnect.push(dryGain, delaySend, delayNode, toneFilter, wetGain, feedbackGain);
+    } else {
+      voiceGain.connect(this.output);
+    }
+
     const intendedOffset = reverse ? buffer.duration - offset - safeDuration : offset;
     const playbackOffset = Math.max(0, Math.min(maxOffset, intendedOffset));
+    const baseStopTime = when + holdDuration + release;
+    const delayTailSeconds = delay?.enabled
+      ? (clampDelayTime(delay.time) / 1000) * (2 + Math.round((clampDelayPercent(delay.feedback, 95, 35) / 100) * 6))
+      : 0;
+    const disconnectDelayMs = Math.ceil((baseStopTime - this.audioContext.currentTime + delayTailSeconds + 0.2) * 1000);
+
     if (loop) {
       source.loop = true;
       const loopRegionStart = reverse ? buffer.duration - loopEnd : loopStart;
@@ -231,11 +324,17 @@ class PlaybackLayer {
       source.loopStart = Math.max(0, Math.min(buffer.duration - 0.01, loopRegionStart));
       source.loopEnd = Math.max(source.loopStart + 0.01, Math.min(buffer.duration, loopRegionEnd));
       source.start(when, playbackOffset);
-      source.stop(when + holdDuration + release);
+      source.stop(baseStopTime);
+      window.setTimeout(() => {
+        nodesToDisconnect.forEach((node) => node.disconnect?.());
+      }, Math.max(0, disconnectDelayMs));
       return true;
     }
     source.start(when, playbackOffset, safeDuration);
     source.stop(when + safeDuration + release);
+    window.setTimeout(() => {
+      nodesToDisconnect.forEach((node) => node.disconnect?.());
+    }, Math.max(0, disconnectDelayMs));
     return true;
   }
 
@@ -354,6 +453,7 @@ class PlaybackLayer {
           voicePlacement: track.voicePlacement,
           voicePlaybackMode: track.voicePlaybackMode,
           filter: track.effects.filter,
+          delay: track.effects.delay,
         },
         when,
         sliceIndex,
@@ -492,6 +592,11 @@ const state = {
     trackIndex: 0,
     effectKey: "filter",
   },
+  delayOverlay: {
+    open: false,
+    trackIndex: 0,
+    effectKey: "delay",
+  },
   defaultSampleLoaded: false,
   defaultSampleLoadPromise: null,
   sampleLoading: false,
@@ -540,6 +645,7 @@ function normalizeTrack(index, source = {}) {
     voicePlaybackMode: ["one-shot", "loop", "smooth-loop"].includes(source.voicePlaybackMode) ? source.voicePlaybackMode : fallback.voicePlaybackMode,
     effects: {
       filter: normalizeFilterSettings(source.effects?.filter ?? source.filter ?? fallback.effects.filter, fallback.effects.filter),
+      delay: normalizeDelaySettings(source.effects?.delay ?? source.delay ?? fallback.effects.delay, fallback.effects.delay),
     },
     rate: TRACK_RATE_VALUES.includes(source.rate) ? source.rate : fallback.rate,
     grainSize: Math.max(20, Math.min(350, Number(source.grainSize) || fallback.grainSize)),
@@ -577,6 +683,7 @@ function writeStoredSession() {
       voicePlaybackMode: track.voicePlaybackMode,
       effects: {
         filter: { ...track.effects.filter },
+        delay: { ...track.effects.delay },
       },
       rate: track.rate,
       grainSize: track.grainSize,
@@ -732,6 +839,15 @@ function formatFilterTypeLabel(type) {
   return "LP";
 }
 
+function formatDelayTime(value) {
+  const safeValue = clampDelayTime(value);
+  return safeValue >= 1000 ? `${(safeValue / 1000).toFixed(2)} s` : `${Math.round(safeValue)} ms`;
+}
+
+function formatPercent(value, max = 100) {
+  return `${Math.round(Math.max(0, Math.min(max, Number(value) || 0)))}%`;
+}
+
 function formatFilterFrequency(value) {
   const safeValue = clampFilterFrequency(value);
   return safeValue >= 1000 ? `${(safeValue / 1000).toFixed(2)} kHz` : `${Math.round(safeValue)} Hz`;
@@ -825,6 +941,11 @@ function getTrackFilter(trackOrIndex) {
   return track?.effects?.filter ?? createDefaultFilterSettings();
 }
 
+function getTrackDelay(trackOrIndex) {
+  const track = Number.isInteger(trackOrIndex) ? state.tracks[trackOrIndex] : trackOrIndex;
+  return track?.effects?.delay ?? createDefaultDelaySettings();
+}
+
 function syncFilterOverlay() {
   if (!ui.filterOverlay) return;
   const isOpen = state.filterOverlay.open;
@@ -844,6 +965,30 @@ function syncFilterOverlay() {
   ui.filterTypeRadios.forEach((radio) => {
     radio.checked = radio.value === filter.type;
   });
+}
+
+function syncDelayOverlay() {
+  if (!ui.delayOverlay) return;
+  const isOpen = state.delayOverlay.open;
+  ui.delayOverlay.classList.toggle("is-hidden", !isOpen);
+  ui.delayOverlay.setAttribute("aria-hidden", String(!isOpen));
+  if (!isOpen) return;
+
+  const track = state.tracks[state.delayOverlay.trackIndex] ?? getSelectedTrack();
+  const delay = getTrackDelay(track);
+  if (ui.delayOverlayTrack) {
+    ui.delayOverlayTrack.textContent = `${track.name} • Delay ${delay.enabled ? "enabled" : "disabled"}`;
+  }
+  ui.delayTime.value = String(delay.time);
+  ui.delayTimeValue.textContent = formatDelayTime(delay.time);
+  ui.delayFeedback.value = String(delay.feedback);
+  ui.delayFeedbackValue.textContent = formatPercent(delay.feedback, 95);
+  ui.delayDecay.value = String(delay.decay);
+  ui.delayDecayValue.textContent = formatPercent(delay.decay);
+  ui.delayTone.value = String(delay.tone);
+  ui.delayToneValue.textContent = formatPercent(delay.tone);
+  ui.delayMix.value = String(delay.mix);
+  ui.delayMixValue.textContent = formatPercent(delay.mix);
 }
 
 function syncSampleBrowserOverlay() {
@@ -1000,6 +1145,27 @@ function openFilterOverlay(trackIndex) {
 function closeFilterOverlay() {
   state.filterOverlay.open = false;
   syncFilterOverlay();
+}
+
+function openDelayOverlay(trackIndex) {
+  state.selectedTrackIndex = trackIndex;
+  state.delayOverlay = {
+    open: true,
+    trackIndex,
+    effectKey: "delay",
+  };
+  syncUi();
+  renderTrackSelector();
+  renderEffectsMatrix();
+  renderMixer();
+  renderPattern();
+  drawWaveform();
+  writeStoredSession();
+}
+
+function closeDelayOverlay() {
+  state.delayOverlay.open = false;
+  syncDelayOverlay();
 }
 
 function setTrackIndicator(trackIndex, start, end, durationMs = 180) {
@@ -1389,7 +1555,7 @@ function renderEffectsMatrix() {
 
     const labelCell = document.createElement("div");
     labelCell.className = "effects-axis-label effects-row-label";
-    labelCell.textContent = effectKey === "filter" ? "Filter" : effectKey;
+    labelCell.textContent = effectKey === "filter" ? "Filter" : effectKey === "delay" ? "Delay" : effectKey;
     row.append(labelCell);
 
     state.tracks.forEach((track, trackIndex) => {
@@ -1397,7 +1563,9 @@ function renderEffectsMatrix() {
       const button = document.createElement("button");
       button.className = `effects-cell effects-toggle${effect.enabled ? " active" : ""}${trackIndex === state.selectedTrackIndex ? " selected" : ""}`;
       applyTrackColor(button, track.color);
-      button.textContent = effect.enabled ? formatFilterTypeLabel(effect.type) : "Off";
+      button.textContent = effect.enabled
+        ? (effectKey === "filter" ? formatFilterTypeLabel(effect.type) : formatDelayTime(effect.time))
+        : "Off";
       button.title = `${track.name} ${effectKey} ${effect.enabled ? "enabled" : "disabled"}`;
 
       let holdTimer = null;
@@ -1420,7 +1588,8 @@ function renderEffectsMatrix() {
         holdTimer = window.setTimeout(() => {
           holdTriggered = true;
           button.classList.remove("is-armed");
-          openFilterOverlay(trackIndex);
+          if (effectKey === "filter") openFilterOverlay(trackIndex);
+          if (effectKey === "delay") openDelayOverlay(trackIndex);
         }, 1000);
       });
 
@@ -1520,6 +1689,7 @@ function syncUi() {
   ui.fillDensityValue.textContent = `${state.fillDensity}%`;
   syncTransportButton();
   syncFilterOverlay();
+  syncDelayOverlay();
   ui.regionStart.value = String(Math.round(state.sample.regionStart * 1000));
   ui.regionEnd.value = String(Math.round(state.sample.regionEnd * 1000));
   ui.sliceCount.value = String(track.sliceCount);
@@ -1545,6 +1715,15 @@ function updateTrackFilter(trackIndex, patch) {
   const track = state.tracks[trackIndex];
   if (!track) return;
   track.effects.filter = normalizeFilterSettings({ ...track.effects.filter, ...patch }, track.effects.filter);
+  syncUi();
+  renderEffectsMatrix();
+  writeStoredSession();
+}
+
+function updateTrackDelay(trackIndex, patch) {
+  const track = state.tracks[trackIndex];
+  if (!track) return;
+  track.effects.delay = normalizeDelaySettings({ ...track.effects.delay, ...patch }, track.effects.delay);
   syncUi();
   renderEffectsMatrix();
   writeStoredSession();
@@ -1663,6 +1842,26 @@ ui.filterOverlay.addEventListener("click", (event) => {
   if (!(event.target instanceof HTMLElement)) return;
   if (event.target.dataset.overlayClose === "true") closeFilterOverlay();
 });
+ui.delayTime.addEventListener("input", () => {
+  updateTrackDelay(state.delayOverlay.trackIndex, { time: Number(ui.delayTime.value) });
+});
+ui.delayFeedback.addEventListener("input", () => {
+  updateTrackDelay(state.delayOverlay.trackIndex, { feedback: Number(ui.delayFeedback.value) });
+});
+ui.delayDecay.addEventListener("input", () => {
+  updateTrackDelay(state.delayOverlay.trackIndex, { decay: Number(ui.delayDecay.value) });
+});
+ui.delayTone.addEventListener("input", () => {
+  updateTrackDelay(state.delayOverlay.trackIndex, { tone: Number(ui.delayTone.value) });
+});
+ui.delayMix.addEventListener("input", () => {
+  updateTrackDelay(state.delayOverlay.trackIndex, { mix: Number(ui.delayMix.value) });
+});
+ui.delayOverlayClose.addEventListener("click", () => closeDelayOverlay());
+ui.delayOverlay.addEventListener("click", (event) => {
+  if (!(event.target instanceof HTMLElement)) return;
+  if (event.target.dataset.delayOverlayClose === "true") closeDelayOverlay();
+});
 
 ui.sampleBrowserToggle.addEventListener("click", () => openSampleBrowser());
 ui.sampleBrowserClose.addEventListener("click", () => closeSampleBrowser());
@@ -1736,6 +1935,10 @@ ui.transportToggle.addEventListener("click", async () => {
 window.addEventListener("keydown", async (event) => {
   if (event.key === "Escape" && state.filterOverlay.open) {
     closeFilterOverlay();
+    return;
+  }
+  if (event.key === "Escape" && state.delayOverlay.open) {
+    closeDelayOverlay();
     return;
   }
   if (event.key === "Escape" && state.sampleBrowserOpen) {
