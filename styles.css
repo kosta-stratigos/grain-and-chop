@@ -459,21 +459,65 @@ label,
 
 input[type="range"] {
   width: 100%;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
 }
 
 select {
   width: 100%;
   min-height: 34px;
-  padding: 6px 10px;
+  padding: 6px 34px 6px 10px;
   border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.04);
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='none' stroke='%239ebdb2' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M1 1l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 10px 6px;
   color: var(--text);
 }
 
 select,
 input[type="range"] {
   accent-color: var(--accent);
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  border: 0;
+  border-radius: 3px;
+  background: linear-gradient(90deg, rgba(79, 196, 184, 0.38), rgba(111, 169, 255, 0.34));
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 10px;
+  height: 10px;
+  margin-top: -3px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--text);
+  box-shadow: 0 0 0 1px rgba(6, 20, 16, 0.24);
+}
+
+input[type="range"]::-moz-range-track {
+  height: 4px;
+  border: 0;
+  border-radius: 3px;
+  background: linear-gradient(90deg, rgba(79, 196, 184, 0.38), rgba(111, 169, 255, 0.34));
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--text);
+  box-shadow: 0 0 0 1px rgba(6, 20, 16, 0.24);
 }
 
 .toggle-card {
