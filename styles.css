@@ -217,6 +217,14 @@ h2 {
   border: 1px solid rgba(255, 255, 255, 0.04);
 }
 
+#waveform-overview.is-region-draggable {
+  cursor: grab;
+}
+
+#waveform-overview.is-dragging {
+  cursor: grabbing;
+}
+
 .region-grid,
 .control-stack,
 .control-grid {
@@ -594,12 +602,41 @@ input[type="range"] {
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
 }
 
+.sample-browser-panel {
+  width: min(640px, calc(100vw - 32px));
+}
+
 .overlay-head {
   margin-bottom: 14px;
 }
 
 .overlay-controls {
   gap: 14px;
+}
+
+.sample-browser-sections {
+  display: grid;
+  gap: 12px;
+}
+
+.sample-browser-group {
+  gap: 12px;
+}
+
+.sample-library-list {
+  display: grid;
+  gap: 8px;
+}
+
+.sample-library-item {
+  justify-content: flex-start;
+  border-radius: var(--pane-radius);
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.sample-browser-picker {
+  justify-content: center;
 }
 
 .radio-group {

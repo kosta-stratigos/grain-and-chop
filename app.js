@@ -1,6 +1,11 @@
 const ui = {
   audioToggle: document.querySelector("#audio-toggle"),
   sampleInput: document.querySelector("#sample-input"),
+  sampleBrowserToggle: document.querySelector("#sample-browser-toggle"),
+  sampleBrowserOverlay: document.querySelector("#sample-browser-overlay"),
+  sampleBrowserClose: document.querySelector("#sample-browser-close"),
+  sampleBrowserInput: document.querySelector("#sample-browser-input"),
+  sampleLibraryList: document.querySelector("#sample-library-list"),
   sampleStatus: document.querySelector("#sample-status"),
   diagnostics: document.querySelector("#diagnostics"),
   waveform: document.querySelector("#waveform"),
@@ -54,6 +59,11 @@ const ui = {
 const STORAGE_KEY = "granular-chop-lab:session";
 const DEFAULT_SAMPLE_URL = "./samples/bird_singing_-_amsel_-_blackbird_1_z9i.wav";
 const DEFAULT_SAMPLE_NAME = "bird_singing_-_amsel_-_blackbird_1_z9i.wav";
+const SAMPLE_LIBRARY = [
+  { name: "bird_singing_-_amsel_-_blackbird_1_z9i.wav", url: "./samples/bird_singing_-_amsel_-_blackbird_1_z9i.wav" },
+  { name: "orthodox_priest_singing_1_r8j.wav", url: "./samples/orthodox_priest_singing_1_r8j.wav" },
+  { name: "95721__elankford__pump-organ-mid-c.wav", url: "./samples/95721__elankford__pump-organ-mid-c.wav" },
+];
 const BASE_GRID_STEPS = 32;
 const MAX_PATTERN_CELLS = 32;
 const TRACK_COUNT = 4;
@@ -458,6 +468,13 @@ const state = {
   tracks: Array.from({ length: TRACK_COUNT }, (_, index) => createTrack(index + 1)),
   trackPlaybackState: Array.from({ length: TRACK_COUNT }, () => ({ sequentialIndex: 0, sweepIndex: 0, sweepDirection: 1 })),
   trackIndicators: Array.from({ length: TRACK_COUNT }, () => null),
+  sampleBrowserOpen: false,
+  overviewDrag: {
+    active: false,
+    pointerId: null,
+    offset: 0,
+    width: 1,
+  },
   filterOverlay: {
     open: false,
     trackIndex: 0,
@@ -635,20 +652,12 @@ async function loadDefaultSample() {
       state.playback.output.gain.value = state.mixVolume;
     }
 
-    const response = await fetch(DEFAULT_SAMPLE_URL);
-    if (!response.ok) throw new Error(`request failed (${response.status})`);
-
-    const restoredStart = state.sample.regionStart;
-    const restoredEnd = state.sample.regionEnd;
-    const data = await response.arrayBuffer();
-    await state.sample.loadArrayBuffer(data, state.audioContext);
-    state.sample.setRegion(restoredStart, restoredEnd);
-    state.defaultSampleLoaded = true;
-    state.currentSampleName = DEFAULT_SAMPLE_NAME;
-
-    syncUi();
-    drawWaveform();
-    renderPattern();
+    await loadSampleSource(async () => {
+      const response = await fetch(DEFAULT_SAMPLE_URL);
+      if (!response.ok) throw new Error(`request failed (${response.status})`);
+      const data = await response.arrayBuffer();
+      await state.sample.loadArrayBuffer(data, state.audioContext);
+    }, DEFAULT_SAMPLE_NAME, { preview: false });
   } catch (error) {
     console.error(`Default sample load failed: ${error.message}`);
   }
@@ -803,6 +812,134 @@ function syncFilterOverlay() {
   ui.filterTypeRadios.forEach((radio) => {
     radio.checked = radio.value === filter.type;
   });
+}
+
+function syncSampleBrowserOverlay() {
+  if (!ui.sampleBrowserOverlay) return;
+  ui.sampleBrowserOverlay.classList.toggle("is-hidden", !state.sampleBrowserOpen);
+  ui.sampleBrowserOverlay.setAttribute("aria-hidden", String(!state.sampleBrowserOpen));
+}
+
+function openSampleBrowser() {
+  state.sampleBrowserOpen = true;
+  syncSampleBrowserOverlay();
+}
+
+function closeSampleBrowser() {
+  state.sampleBrowserOpen = false;
+  syncSampleBrowserOverlay();
+}
+
+async function loadSampleSource(loader, sampleName, { preview = true } = {}) {
+  try {
+    await ensureAudio();
+    setDiagnostics(`loading ${sampleName}...`, "warn");
+    const restoredStart = state.sample.regionStart;
+    const restoredEnd = state.sample.regionEnd;
+    await loader();
+    state.defaultSampleLoaded = true;
+    state.currentSampleName = sampleName;
+    state.sample.setRegion(restoredStart, restoredEnd);
+    syncUi();
+    drawWaveform();
+    renderPattern();
+    writeStoredSession();
+
+    if (preview) {
+      const previewPlayed = state.playback.triggerTrack(getSelectedTrack(), undefined, null, getTrackTriggerDuration(getSelectedTrack()));
+      indicateTrackPlayback(getSelectedTrack());
+      setDiagnostics(
+        previewPlayed ? `loaded ${sampleName} and previewed ${getSelectedTrack().name}.` : `loaded ${sampleName}, but preview playback failed.`,
+        previewPlayed ? "ok" : "error",
+      );
+    } else {
+      setDiagnostics(`loaded ${sampleName}.`, "ok");
+    }
+    return true;
+  } catch (error) {
+    setDiagnostics(`load failed for ${sampleName}: ${error.message}`, "error");
+    if (ui.sampleStatus) ui.sampleStatus.textContent = "This file could not be decoded by the browser.";
+    return false;
+  }
+}
+
+async function loadSampleFromLibrary(sampleEntry) {
+  if (!sampleEntry) return;
+  const loaded = await loadSampleSource(async () => {
+    const response = await fetch(sampleEntry.url);
+    if (!response.ok) throw new Error(`request failed (${response.status})`);
+    const data = await response.arrayBuffer();
+    await state.sample.loadArrayBuffer(data, state.audioContext);
+  }, sampleEntry.name);
+  if (loaded) closeSampleBrowser();
+}
+
+async function loadSampleFromFile(file) {
+  if (!file) return;
+  const loaded = await loadSampleSource(() => state.sample.loadFile(file, state.audioContext), file.name);
+  if (loaded) closeSampleBrowser();
+}
+
+function renderSampleLibrary() {
+  if (!ui.sampleLibraryList) return;
+  ui.sampleLibraryList.innerHTML = "";
+  SAMPLE_LIBRARY.forEach((sampleEntry) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "sample-library-item";
+    button.textContent = sampleEntry.name;
+    button.addEventListener("click", () => {
+      loadSampleFromLibrary(sampleEntry);
+    });
+    ui.sampleLibraryList.append(button);
+  });
+}
+
+function getOverviewPointerState(clientX) {
+  const canvas = ui.waveformOverview;
+  if (!canvas || !state.sample.buffer) return null;
+  const rect = canvas.getBoundingClientRect();
+  const relativeX = Math.max(0, Math.min(rect.width, clientX - rect.left));
+  const normalized = rect.width > 0 ? relativeX / rect.width : 0;
+  const regionStart = state.sample.regionStart;
+  const regionEnd = state.sample.regionEnd;
+  return {
+    normalized,
+    regionStart,
+    regionEnd,
+    insideRegion: normalized >= regionStart && normalized <= regionEnd,
+  };
+}
+
+function updateOverviewCursor(clientX = null) {
+  const canvas = ui.waveformOverview;
+  if (!canvas) return;
+  if (state.overviewDrag.active) {
+    canvas.classList.add("is-dragging");
+    return;
+  }
+  canvas.classList.remove("is-dragging");
+  if (clientX === null || !state.sample.buffer) {
+    canvas.classList.remove("is-region-draggable");
+    return;
+  }
+  const pointerState = getOverviewPointerState(clientX);
+  canvas.classList.toggle("is-region-draggable", Boolean(pointerState?.insideRegion));
+}
+
+function updateOverviewRegionFromPointer(clientX) {
+  if (!state.sample.buffer) return;
+  const canvas = ui.waveformOverview;
+  if (!canvas) return;
+  const rect = canvas.getBoundingClientRect();
+  if (rect.width <= 0) return;
+  const normalized = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+  const width = state.overviewDrag.width;
+  const nextStart = Math.max(0, Math.min(1 - width, normalized - state.overviewDrag.offset));
+  state.sample.setRegion(nextStart, nextStart + width);
+  syncUi();
+  drawWaveform();
+  writeStoredSession();
 }
 
 function openFilterOverlay(trackIndex) {
@@ -1385,30 +1522,15 @@ if (ui.audioToggle) {
 ui.sampleInput.addEventListener("change", async (event) => {
   const [file] = event.target.files ?? [];
   if (!file) return;
-  try {
-    await ensureAudio();
-    setDiagnostics(`loading ${file.name}...`, "warn");
-    const restoredStart = state.sample.regionStart;
-    const restoredEnd = state.sample.regionEnd;
-    await state.sample.loadFile(file, state.audioContext);
-    state.defaultSampleLoaded = true;
-    state.currentSampleName = file.name;
-    state.sample.setRegion(restoredStart, restoredEnd);
-    syncUi();
-    drawWaveform();
-    renderPattern();
-    writeStoredSession();
+  await loadSampleFromFile(file);
+  ui.sampleInput.value = "";
+});
 
-    const previewPlayed = state.playback.triggerTrack(getSelectedTrack(), undefined, null, getTrackTriggerDuration(getSelectedTrack()));
-    indicateTrackPlayback(getSelectedTrack());
-    setDiagnostics(
-      previewPlayed ? `loaded ${file.name} and previewed ${getSelectedTrack().name}.` : `loaded ${file.name}, but preview playback failed.`,
-      previewPlayed ? "ok" : "error",
-    );
-  } catch (error) {
-    setDiagnostics(`load failed for ${file.name}: ${error.message}`, "error");
-    if (ui.sampleStatus) ui.sampleStatus.textContent = "This file could not be decoded by the browser.";
-  }
+ui.sampleBrowserInput.addEventListener("change", async (event) => {
+  const [file] = event.target.files ?? [];
+  if (!file) return;
+  await loadSampleFromFile(file);
+  ui.sampleBrowserInput.value = "";
 });
 
 ui.regionStart.addEventListener("input", () => {
@@ -1500,6 +1622,51 @@ ui.filterOverlay.addEventListener("click", (event) => {
   if (event.target.dataset.overlayClose === "true") closeFilterOverlay();
 });
 
+ui.sampleBrowserToggle.addEventListener("click", () => openSampleBrowser());
+ui.sampleBrowserClose.addEventListener("click", () => closeSampleBrowser());
+ui.sampleBrowserOverlay.addEventListener("click", (event) => {
+  if (!(event.target instanceof HTMLElement)) return;
+  if (event.target.dataset.sampleOverlayClose === "true") closeSampleBrowser();
+});
+
+ui.waveformOverview.addEventListener("pointerdown", (event) => {
+  const pointerState = getOverviewPointerState(event.clientX);
+  if (!pointerState?.insideRegion) return;
+  state.overviewDrag = {
+    active: true,
+    pointerId: event.pointerId,
+    offset: pointerState.normalized - pointerState.regionStart,
+    width: pointerState.regionEnd - pointerState.regionStart,
+  };
+  ui.waveformOverview.setPointerCapture(event.pointerId);
+  updateOverviewCursor();
+});
+
+ui.waveformOverview.addEventListener("pointermove", (event) => {
+  if (state.overviewDrag.active && state.overviewDrag.pointerId === event.pointerId) {
+    updateOverviewRegionFromPointer(event.clientX);
+    return;
+  }
+  updateOverviewCursor(event.clientX);
+});
+
+ui.waveformOverview.addEventListener("pointerup", (event) => {
+  if (state.overviewDrag.active && state.overviewDrag.pointerId === event.pointerId) {
+    state.overviewDrag = { active: false, pointerId: null, offset: 0, width: 1 };
+    ui.waveformOverview.releasePointerCapture(event.pointerId);
+  }
+  updateOverviewCursor(event.clientX);
+});
+
+ui.waveformOverview.addEventListener("pointercancel", () => {
+  state.overviewDrag = { active: false, pointerId: null, offset: 0, width: 1 };
+  updateOverviewCursor();
+});
+
+ui.waveformOverview.addEventListener("pointerleave", () => {
+  if (!state.overviewDrag.active) updateOverviewCursor();
+});
+
 ui.transportToggle.addEventListener("click", async () => {
   try {
     await ensureAudio();
@@ -1524,6 +1691,10 @@ ui.transportToggle.addEventListener("click", async () => {
 window.addEventListener("keydown", async (event) => {
   if (event.key === "Escape" && state.filterOverlay.open) {
     closeFilterOverlay();
+    return;
+  }
+  if (event.key === "Escape" && state.sampleBrowserOpen) {
+    closeSampleBrowser();
     return;
   }
   if (event.code !== "Space") return;
@@ -1551,6 +1722,8 @@ applyStoredSession();
 syncTransportButton();
 syncUi();
 drawWaveform();
+renderSampleLibrary();
+syncSampleBrowserOverlay();
 renderTrackSelector();
 renderEffectsMatrix();
 renderMixer();
