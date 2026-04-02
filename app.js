@@ -480,27 +480,28 @@ class PlaybackLayer {
   }
 
   triggerTrack(track, when = this.audioContext.currentTime, sliceIndex = null, noteDuration = null) {
-    if (track.mode === "granular") {
+    const playbackTrack = getTrackPlaybackSettings(track);
+    if (playbackTrack.mode === "granular") {
       return this.triggerGranular(
         {
-          trackIndex: track.id - 1,
-          grainSizeMs: track.grainSize,
-          density: track.grainDensity,
-          spray: track.spray / 100,
-          pitch: track.pitch,
-          reverse: track.reverse,
+          trackIndex: playbackTrack.trackIndex,
+          grainSizeMs: playbackTrack.grainSize,
+          density: playbackTrack.grainDensity,
+          spray: playbackTrack.spray / 100,
+          pitch: playbackTrack.pitch,
+          reverse: playbackTrack.reverse,
           level: 1,
-          sliceCount: track.sliceCount,
-          grainLocation: track.grainLocation,
-          voicePlacement: track.voicePlacement,
-          voicePlaybackMode: track.voicePlaybackMode,
+          sliceCount: playbackTrack.sliceCount,
+          grainLocation: playbackTrack.grainLocation,
+          voicePlacement: playbackTrack.voicePlacement,
+          voicePlaybackMode: playbackTrack.voicePlaybackMode,
         },
         when,
         sliceIndex,
         noteDuration,
       );
     }
-    return this.triggerSlice(track, when, sliceIndex, noteDuration);
+    return this.triggerSlice(playbackTrack, when, sliceIndex, noteDuration);
   }
 }
 
@@ -587,23 +588,31 @@ function createTrack(id) {
     id,
     name: `Track ${id}`,
     color: TRACK_COLORS[(id - 1) % TRACK_COLORS.length],
-    mode: id % 2 === 0 ? "chop" : "granular",
+    voiceIndex: id - 1,
     muted: false,
     solo: false,
     volume: 0.85,
+    effects: createTrackEffects(),
+    rate: "1/16",
+    pattern: Array.from({ length: MAX_PATTERN_CELLS }, (_, index) => (index + id - 1) % 4 === 0),
+  };
+}
+
+function createVoiceConfig(id) {
+  return {
+    id,
+    name: `Voice ${id}`,
+    mode: id % 2 === 0 ? "chop" : "granular",
     reverse: false,
     grainLocation: "fixed",
     voicePlacement: 50,
     voicePlaybackMode: "one-shot",
-    effects: createTrackEffects(),
     grainSize: 110,
     grainDensity: 12,
     spray: 18,
     pitch: 0,
     chopGate: 70,
     sliceCount: 8,
-    rate: "1/16",
-    pattern: Array.from({ length: MAX_PATTERN_CELLS }, (_, index) => (index + id - 1) % 4 === 0),
   };
 }
 
@@ -617,7 +626,9 @@ const state = {
   swing: 0,
   steps: BASE_GRID_STEPS,
   selectedTrackIndex: 0,
+  selectedVoiceIndex: 0,
   tracks: Array.from({ length: TRACK_COUNT }, (_, index) => createTrack(index + 1)),
+  voices: Array.from({ length: TRACK_COUNT }, (_, index) => createVoiceConfig(index + 1)),
   trackPlaybackState: Array.from({ length: TRACK_COUNT }, () => ({ sequentialIndex: 0, sweepIndex: 0, sweepDirection: 1 })),
   trackIndicators: Array.from({ length: TRACK_COUNT }, () => null),
   sampleBrowserOpen: false,
@@ -651,6 +662,10 @@ function getSelectedTrack() {
   return state.tracks[state.selectedTrackIndex];
 }
 
+function getSelectedVoice() {
+  return state.voices[state.selectedVoiceIndex];
+}
+
 function readStoredSession() {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
@@ -672,29 +687,39 @@ function resetTrackPlaybackState(trackIndex = null) {
 
 function normalizeTrack(index, source = {}) {
   const fallback = createTrack(index + 1);
+  const resolvedVoiceIndex = Number.isFinite(Number(source.voiceIndex)) ? Number(source.voiceIndex) : fallback.voiceIndex;
   return {
     ...fallback,
     color: typeof source.color === "string" ? source.color : fallback.color,
-    mode: source.mode === "chop" ? "chop" : source.mode === "granular" ? "granular" : fallback.mode,
+    voiceIndex: Math.max(0, Math.min(TRACK_COUNT - 1, resolvedVoiceIndex)),
     muted: Boolean(source.muted),
     solo: Boolean(source.solo),
     volume: Math.max(0, Math.min(1, Number(source.volume) || fallback.volume)),
-    reverse: Boolean(source.reverse),
-    grainLocation: ["fixed", "sequential", "sweep", "random"].includes(source.grainLocation) ? source.grainLocation : fallback.grainLocation,
-    voicePlacement: Math.max(0, Math.min(100, Number(source.voicePlacement) || fallback.voicePlacement)),
-    voicePlaybackMode: ["one-shot", "loop", "smooth-loop"].includes(source.voicePlaybackMode) ? source.voicePlaybackMode : fallback.voicePlaybackMode,
     effects: {
       filter: normalizeFilterSettings(source.effects?.filter ?? source.filter ?? fallback.effects.filter, fallback.effects.filter),
       delay: normalizeDelaySettings(source.effects?.delay ?? source.delay ?? fallback.effects.delay, fallback.effects.delay),
     },
     rate: TRACK_RATE_VALUES.includes(source.rate) ? source.rate : fallback.rate,
+    pattern: Array.from({ length: MAX_PATTERN_CELLS }, (_, step) => Boolean(source.pattern?.[step] ?? fallback.pattern[step])),
+  };
+}
+
+function normalizeVoice(index, source = {}) {
+  const fallback = createVoiceConfig(index + 1);
+  return {
+    ...fallback,
+    name: typeof source.name === "string" ? source.name : fallback.name,
+    mode: source.mode === "chop" ? "chop" : source.mode === "granular" ? "granular" : fallback.mode,
+    reverse: Boolean(source.reverse),
+    grainLocation: ["fixed", "sequential", "sweep", "random"].includes(source.grainLocation) ? source.grainLocation : fallback.grainLocation,
+    voicePlacement: Math.max(0, Math.min(100, Number(source.voicePlacement) || fallback.voicePlacement)),
+    voicePlaybackMode: ["one-shot", "loop", "smooth-loop"].includes(source.voicePlaybackMode) ? source.voicePlaybackMode : fallback.voicePlaybackMode,
     grainSize: Math.max(20, Math.min(350, Number(source.grainSize) || fallback.grainSize)),
     grainDensity: Math.max(2, Math.min(40, Number(source.grainDensity) || fallback.grainDensity)),
     spray: Math.max(0, Math.min(100, Number(source.spray) || fallback.spray)),
     pitch: Math.max(-24, Math.min(24, Number(source.pitch) || fallback.pitch)),
     chopGate: Math.max(10, Math.min(100, Number(source.chopGate) || fallback.chopGate)),
     sliceCount: Math.max(2, Math.min(16, Number(source.sliceCount) || fallback.sliceCount)),
-    pattern: Array.from({ length: MAX_PATTERN_CELLS }, (_, step) => Boolean(source.pattern?.[step] ?? fallback.pattern[step])),
   };
 }
 
@@ -704,34 +729,40 @@ function writeStoredSession() {
     swing: state.swing,
     steps: state.steps,
     selectedTrackIndex: state.selectedTrackIndex,
+    selectedVoiceIndex: state.selectedVoiceIndex,
     fillDensity: state.fillDensity,
     mixVolume: state.mixVolume,
     sample: {
       regionStart: state.sample.regionStart,
       regionEnd: state.sample.regionEnd,
     },
+    voices: state.voices.map((voice) => ({
+      id: voice.id,
+      name: voice.name,
+      mode: voice.mode,
+      reverse: voice.reverse,
+      grainLocation: voice.grainLocation,
+      voicePlacement: voice.voicePlacement,
+      voicePlaybackMode: voice.voicePlaybackMode,
+      grainSize: voice.grainSize,
+      grainDensity: voice.grainDensity,
+      spray: voice.spray,
+      pitch: voice.pitch,
+      chopGate: voice.chopGate,
+      sliceCount: voice.sliceCount,
+    })),
     tracks: state.tracks.map((track) => ({
       id: track.id,
       color: track.color,
-      mode: track.mode,
+      voiceIndex: track.voiceIndex,
       muted: track.muted,
       solo: track.solo,
       volume: track.volume,
-      reverse: track.reverse,
-      grainLocation: track.grainLocation,
-      voicePlacement: track.voicePlacement,
-      voicePlaybackMode: track.voicePlaybackMode,
       effects: {
         filter: { ...track.effects.filter },
         delay: { ...track.effects.delay },
       },
       rate: track.rate,
-      grainSize: track.grainSize,
-      grainDensity: track.grainDensity,
-      spray: track.spray,
-      pitch: track.pitch,
-      chopGate: track.chopGate,
-      sliceCount: track.sliceCount,
       pattern: track.pattern.slice(0, MAX_PATTERN_CELLS),
     })),
   };
@@ -753,6 +784,9 @@ function applyStoredSession() {
   state.selectedTrackIndex = Number.isFinite(stored.selectedTrackIndex)
     ? Math.max(0, Math.min(TRACK_COUNT - 1, stored.selectedTrackIndex))
     : 0;
+  state.selectedVoiceIndex = Number.isFinite(stored.selectedVoiceIndex)
+    ? Math.max(0, Math.min(TRACK_COUNT - 1, stored.selectedVoiceIndex))
+    : 0;
   state.fillDensity = Number.isFinite(stored.fillDensity) ? Math.max(0, Math.min(100, stored.fillDensity)) : state.fillDensity;
   state.mixVolume = Number.isFinite(stored.mixVolume) ? Math.max(0, Math.min(1, stored.mixVolume)) : state.mixVolume;
 
@@ -763,27 +797,38 @@ function applyStoredSession() {
     );
   }
 
+  if (Array.isArray(stored.voices)) {
+    state.voices = Array.from({ length: TRACK_COUNT }, (_, index) => normalizeVoice(index, stored.voices[index]));
+  } else if (Array.isArray(stored.tracks)) {
+    state.voices = Array.from({ length: TRACK_COUNT }, (_, index) => normalizeVoice(index, stored.tracks[index]));
+  }
+
   if (Array.isArray(stored.tracks)) {
-    const legacySliceCount = Number.isFinite(stored.sample?.sliceCount) ? Math.max(2, Math.min(16, stored.sample.sliceCount)) : 8;
     state.tracks = Array.from({ length: TRACK_COUNT }, (_, index) =>
-      normalizeTrack(index, { ...stored.tracks[index], sliceCount: stored.tracks[index]?.sliceCount ?? legacySliceCount }),
+      normalizeTrack(index, { ...stored.tracks[index], voiceIndex: stored.tracks[index]?.voiceIndex ?? index }),
     );
   } else {
     const legacyTrack = normalizeTrack(0, {
-      mode: stored.mode,
-      reverse: stored.controls?.reverse,
-      grainLocation: stored.controls?.grainLocation,
-      voicePlacement: stored.controls?.voicePlacement,
-      voicePlaybackMode: stored.controls?.voicePlaybackMode,
+      voiceIndex: 0,
       rate: stored.controls?.rate,
-      grainSize: stored.controls?.grainSize,
-      grainDensity: stored.controls?.grainDensity,
-      spray: stored.controls?.spray,
-      pitch: stored.controls?.pitch,
-      chopGate: stored.controls?.chopGate,
-      sliceCount: stored.sample?.sliceCount,
       pattern: stored.pattern,
     });
+    state.voices = [
+      normalizeVoice(0, {
+        mode: stored.mode,
+        reverse: stored.controls?.reverse,
+        grainLocation: stored.controls?.grainLocation,
+        voicePlacement: stored.controls?.voicePlacement,
+        voicePlaybackMode: stored.controls?.voicePlaybackMode,
+        grainSize: stored.controls?.grainSize,
+        grainDensity: stored.controls?.grainDensity,
+        spray: stored.controls?.spray,
+        pitch: stored.controls?.pitch,
+        chopGate: stored.controls?.chopGate,
+        sliceCount: stored.sample?.sliceCount,
+      }),
+      ...Array.from({ length: TRACK_COUNT - 1 }, (_, index) => createVoiceConfig(index + 2)),
+    ];
     state.tracks = [legacyTrack, ...Array.from({ length: TRACK_COUNT - 1 }, (_, index) => createTrack(index + 2))];
   }
 }
@@ -878,6 +923,33 @@ function formatVoiceName(track, index) {
   return sourceName.startsWith("Track ") ? sourceName.replace("Track ", "Voice ") : sourceName;
 }
 
+function formatTrackName(track, index) {
+  return track?.name ?? `Track ${index + 1}`;
+}
+
+function getTrackVoice(track) {
+  return state.voices[Math.max(0, Math.min(TRACK_COUNT - 1, track.voiceIndex ?? 0))] ?? createVoiceConfig(1);
+}
+
+function getTrackPlaybackSettings(track) {
+  return {
+    ...track,
+    ...getTrackVoice(track),
+    trackIndex: track.id - 1,
+  };
+}
+
+function renderPatternVoiceOptions() {
+  if (!ui.patternVoiceSelect) return;
+  ui.patternVoiceSelect.innerHTML = "";
+  state.voices.forEach((voice, index) => {
+    const option = document.createElement("option");
+    option.value = String(index);
+    option.textContent = formatVoiceName(voice, index);
+    ui.patternVoiceSelect.append(option);
+  });
+}
+
 function formatFilterTypeLabel(type) {
   if (type === "highpass") return "HP";
   if (type === "bandpass") return "BP";
@@ -919,13 +991,14 @@ function getTrackTriggerDuration(track) {
 }
 
 function resolvePlaybackSliceIndex(track, { advance = false } = {}) {
-  const maxSliceIndex = Math.max(0, track.sliceCount - 1);
+  const playbackTrack = getTrackPlaybackSettings(track);
+  const maxSliceIndex = Math.max(0, playbackTrack.sliceCount - 1);
   const playbackState = state.trackPlaybackState[track.id - 1] ?? { sequentialIndex: 0, sweepIndex: 0, sweepDirection: 1 };
 
-  if (track.grainLocation === "fixed") return 0;
-  if (track.grainLocation === "random") return Math.floor(Math.random() * (maxSliceIndex + 1));
+  if (playbackTrack.grainLocation === "fixed") return 0;
+  if (playbackTrack.grainLocation === "random") return Math.floor(Math.random() * (maxSliceIndex + 1));
 
-  if (track.grainLocation === "sequential") {
+  if (playbackTrack.grainLocation === "sequential") {
     const index = Math.max(0, Math.min(maxSliceIndex, playbackState.sequentialIndex));
     if (advance) playbackState.sequentialIndex = maxSliceIndex > 0 ? (index + 1) % (maxSliceIndex + 1) : 0;
     state.trackPlaybackState[track.id - 1] = playbackState;
@@ -1233,21 +1306,22 @@ function setTrackIndicator(trackIndex, start, end, durationMs = 180) {
 function indicateTrackPlayback(track, sliceIndex = null) {
   if (!state.sample.buffer) return;
   const trackIndex = track.id - 1;
+  const playbackTrack = getTrackPlaybackSettings(track);
 
-  if (track.mode === "chop") {
-    const slices = state.sample.getSlices(track.sliceCount);
+  if (playbackTrack.mode === "chop") {
+    const slices = state.sample.getSlices(playbackTrack.sliceCount);
     if (!slices.length) return;
-    const resolvedIndex = sliceIndex ?? ((track.id - 1) % slices.length);
+    const resolvedIndex = sliceIndex ?? (trackIndex % slices.length);
     const slice = slices[resolvedIndex % slices.length];
     const { startTime, endTime } = state.sample.getRegionBounds();
-    const sliceDuration = Math.max(0.03, slice.duration * (track.chopGate / 100));
-    const fixedStart = startTime + Math.max(0, endTime - startTime - sliceDuration) * ((track.voicePlacement ?? 50) / 100);
-    const indicatorStart = track.grainLocation === "fixed" ? fixedStart : slice.start;
+    const sliceDuration = Math.max(0.03, slice.duration * (playbackTrack.chopGate / 100));
+    const fixedStart = startTime + Math.max(0, endTime - startTime - sliceDuration) * ((playbackTrack.voicePlacement ?? 50) / 100);
+    const indicatorStart = playbackTrack.grainLocation === "fixed" ? fixedStart : slice.start;
     setTrackIndicator(trackIndex, indicatorStart, indicatorStart + sliceDuration, 220);
     return;
   }
 
-  const grainWindow = resolveGrainWindow(track, sliceIndex);
+  const grainWindow = resolveGrainWindow(playbackTrack, sliceIndex);
   setTrackIndicator(trackIndex, grainWindow.start, grainWindow.end, 160);
 }
 
@@ -1409,6 +1483,7 @@ function drawWaveform() {
   ctx.stroke();
 
   state.tracks.forEach((track, trackIndex) => {
+    const playbackTrack = getTrackPlaybackSettings(track);
     const laneTop = laneHeight * trackIndex;
     const laneBottom = laneTop + laneHeight;
     const laneMiddle = laneTop + laneHeight / 2;
@@ -1420,7 +1495,7 @@ function drawWaveform() {
 
     ctx.strokeStyle = hexToRgba(track.color, trackIndex === state.selectedTrackIndex ? 0.8 : 0.42);
     ctx.lineWidth = trackIndex === state.selectedTrackIndex ? 1.5 : 1;
-    state.sample.getSlices(track.sliceCount).forEach((slice, sliceIndex) => {
+    state.sample.getSlices(playbackTrack.sliceCount).forEach((slice, sliceIndex) => {
       const sliceX = timeToViewportX(slice.start, viewport.startTime, viewport.endTime, viewportLeft, viewportWidth);
       if (sliceX < viewportLeft || sliceX > viewportRight) return;
       ctx.beginPath();
@@ -1428,7 +1503,7 @@ function drawWaveform() {
       ctx.lineTo(sliceX, laneBottom - laneInset);
       ctx.stroke();
 
-      if (sliceIndex === track.sliceCount - 1) {
+      if (sliceIndex === playbackTrack.sliceCount - 1) {
         const endMarkerX = timeToViewportX(slice.start + slice.duration, viewport.startTime, viewport.endTime, viewportLeft, viewportWidth);
         if (endMarkerX >= viewportLeft && endMarkerX <= viewportRight) {
           ctx.beginPath();
@@ -1476,7 +1551,7 @@ function drawWaveform() {
     ctx.fillStyle = track.color;
     ctx.font = labelFont;
     ctx.textBaseline = "middle";
-    ctx.fillText(track.name, labelLeft, laneMiddle);
+    ctx.fillText(formatTrackName(track, trackIndex), labelLeft, laneMiddle);
   });
 
   drawWaveformOverview();
@@ -1492,16 +1567,16 @@ function updateCurrentStep(activeStep = -1) {
 
 function renderTrackSelector() {
   ui.trackSelector.innerHTML = "";
-  state.tracks.forEach((track, index) => {
+  state.voices.forEach((voice, index) => {
     const chip = document.createElement("div");
-    chip.className = `track-chip${index === state.selectedTrackIndex ? " active" : ""}`;
-    applyTrackColor(chip, track.color);
+    chip.className = `track-chip${index === state.selectedVoiceIndex ? " active" : ""}`;
+    applyTrackColor(chip, TRACK_COLORS[index % TRACK_COLORS.length]);
 
     const selectButton = document.createElement("button");
     selectButton.className = "track-chip-main";
-    selectButton.innerHTML = `<span class="track-chip-name">${formatVoiceName(track, index)}</span><span class="track-chip-mode">${formatModeLabel(track.mode)}</span>`;
+    selectButton.innerHTML = `<span class="track-chip-name">${formatVoiceName(voice, index)}</span><span class="track-chip-mode">${formatModeLabel(voice.mode)}</span>`;
     selectButton.addEventListener("click", () => {
-      state.selectedTrackIndex = index;
+      state.selectedVoiceIndex = index;
       syncUi();
       renderTrackSelector();
       renderEffectsMatrix();
@@ -1524,7 +1599,7 @@ function renderMixer() {
 
     const head = document.createElement("div");
     head.className = "mixer-head";
-    head.innerHTML = `<span class="mixer-name">${formatVoiceName(track, index)}</span><span class="mixer-value">${Math.round(track.volume * 100)}%</span>`;
+    head.innerHTML = `<span class="mixer-name">${formatTrackName(track, index)}</span><span class="mixer-value">${Math.round(track.volume * 100)}%</span>`;
     strip.append(head);
 
     const controls = document.createElement("div");
@@ -1667,6 +1742,7 @@ function renderEffectsMatrix() {
 function renderPattern(activeStep = -1) {
   ui.patternGrid.innerHTML = "";
   state.tracks.forEach((track, trackIndex) => {
+    const playbackTrack = getTrackPlaybackSettings(track);
     const visibleCellCount = getTrackVisibleCellCount(track);
     const row = document.createElement("div");
     row.className = "pattern-row";
@@ -1675,7 +1751,7 @@ function renderPattern(activeStep = -1) {
     const label = document.createElement("button");
     label.className = `pattern-row-label${trackIndex === state.selectedTrackIndex ? " active" : ""}`;
     applyTrackColor(label, track.color);
-    label.innerHTML = `<span class="pattern-row-name">${track.name}</span><span class="pattern-row-mode">${track.rate} • ${formatModeLabel(track.mode)}${track.muted ? " • M" : track.solo ? " • S" : ""}</span>`;
+    label.innerHTML = `<span class="pattern-row-name">${formatTrackName(track, trackIndex)}</span><span class="pattern-row-mode">${track.rate} • ${formatVoiceName(getTrackVoice(track), track.voiceIndex)} • ${formatModeLabel(playbackTrack.mode)}${track.muted ? " • M" : track.solo ? " • S" : ""}</span>`;
     label.addEventListener("click", () => {
       state.selectedTrackIndex = trackIndex;
       syncUi();
@@ -1712,31 +1788,33 @@ function renderPattern(activeStep = -1) {
 
 function syncUi() {
   const track = getSelectedTrack();
-  ui.sliceCountValue.textContent = String(track.sliceCount);
-  ui.mode.value = track.mode;
-  ui.grainLocation.value = track.grainLocation;
-  ui.voicePlacement.value = String(track.voicePlacement);
-  ui.voicePlacementValue.textContent = `${track.voicePlacement}%`;
-  ui.voicePlaybackMode.value = track.voicePlaybackMode;
-  ui.voicePlacement.disabled = track.grainLocation !== "fixed";
-  ui.voicePlacementField.classList.toggle("is-disabled", track.grainLocation !== "fixed");
-  ui.grainSize.value = String(track.grainSize);
-  ui.grainSizeValue.textContent = String(track.grainSize);
-  ui.grainDensity.value = String(track.grainDensity);
-  ui.grainDensityValue.textContent = String(track.grainDensity);
-  ui.spray.value = String(track.spray);
-  ui.sprayValue.textContent = (track.spray / 100).toFixed(2);
-  ui.pitch.value = String(track.pitch);
-  ui.pitchValue.textContent = String(track.pitch);
-  ui.chopGate.value = String(track.chopGate);
-  ui.chopGateValue.textContent = `${track.chopGate}%`;
-  ui.reverse.checked = track.reverse;
+  const voice = getSelectedVoice();
+  renderPatternVoiceOptions();
+  ui.sliceCountValue.textContent = String(voice.sliceCount);
+  ui.mode.value = voice.mode;
+  ui.grainLocation.value = voice.grainLocation;
+  ui.voicePlacement.value = String(voice.voicePlacement);
+  ui.voicePlacementValue.textContent = `${voice.voicePlacement}%`;
+  ui.voicePlaybackMode.value = voice.voicePlaybackMode;
+  ui.voicePlacement.disabled = voice.grainLocation !== "fixed";
+  ui.voicePlacementField.classList.toggle("is-disabled", voice.grainLocation !== "fixed");
+  ui.grainSize.value = String(voice.grainSize);
+  ui.grainSizeValue.textContent = String(voice.grainSize);
+  ui.grainDensity.value = String(voice.grainDensity);
+  ui.grainDensityValue.textContent = String(voice.grainDensity);
+  ui.spray.value = String(voice.spray);
+  ui.sprayValue.textContent = (voice.spray / 100).toFixed(2);
+  ui.pitch.value = String(voice.pitch);
+  ui.pitchValue.textContent = String(voice.pitch);
+  ui.chopGate.value = String(voice.chopGate);
+  ui.chopGateValue.textContent = `${voice.chopGate}%`;
+  ui.reverse.checked = voice.reverse;
   ui.bpm.value = String(state.bpm);
   ui.bpmValue.textContent = String(state.bpm);
   ui.swing.value = String(state.swing);
   ui.swingValue.textContent = `${state.swing}%`;
   ui.trackRate.value = track.rate;
-  ui.patternVoiceSelect.value = String(state.selectedTrackIndex);
+  ui.patternVoiceSelect.value = String(track.voiceIndex);
   ui.fillDensity.value = String(state.fillDensity);
   ui.mixVolume.value = String(Math.round(state.mixVolume * 100));
   ui.mixVolumeValue.textContent = `${Math.round(state.mixVolume * 100)}%`;
@@ -1746,7 +1824,7 @@ function syncUi() {
   syncDelayOverlay();
   ui.regionStart.value = String(Math.round(state.sample.regionStart * 1000));
   ui.regionEnd.value = String(Math.round(state.sample.regionEnd * 1000));
-  ui.sliceCount.value = String(track.sliceCount);
+  ui.sliceCount.value = String(voice.sliceCount);
 
   if (!ui.sampleStatus) return;
 
@@ -1755,8 +1833,24 @@ function syncUi() {
 
 function updateSelectedTrack(patch) {
   Object.assign(getSelectedTrack(), patch);
-  if ("grainLocation" in patch || "sliceCount" in patch || "rate" in patch) resetTrackPlaybackState(state.selectedTrackIndex);
+  if ("rate" in patch || "voiceIndex" in patch) resetTrackPlaybackState(state.selectedTrackIndex);
   state.playback?.updateTrackBus(state.selectedTrackIndex, getSelectedTrack());
+  syncUi();
+  renderTrackSelector();
+  renderEffectsMatrix();
+  renderMixer();
+  renderPattern();
+  drawWaveform();
+  writeStoredSession();
+}
+
+function updateSelectedVoice(patch) {
+  Object.assign(getSelectedVoice(), patch);
+  state.tracks.forEach((track, index) => {
+    if (track.voiceIndex !== state.selectedVoiceIndex) return;
+    state.playback?.updateTrackBus(index, track);
+    if ("grainLocation" in patch || "sliceCount" in patch) resetTrackPlaybackState(index);
+  });
   syncUi();
   renderTrackSelector();
   renderEffectsMatrix();
@@ -1826,7 +1920,7 @@ ui.regionEnd.addEventListener("input", () => {
 });
 
 ui.sliceCount.addEventListener("input", () => {
-  updateSelectedTrack({ sliceCount: Number(ui.sliceCount.value) });
+  updateSelectedVoice({ sliceCount: Number(ui.sliceCount.value) });
 });
 
 ui.randomizePattern.addEventListener("click", () => {
@@ -1850,20 +1944,13 @@ ui.randomizePattern.addEventListener("click", () => {
   writeStoredSession();
 });
 
-ui.mode.addEventListener("change", () => updateSelectedTrack({ mode: ui.mode.value }));
-ui.grainLocation.addEventListener("change", () => updateSelectedTrack({ grainLocation: ui.grainLocation.value }));
-ui.voicePlacement.addEventListener("input", () => updateSelectedTrack({ voicePlacement: Number(ui.voicePlacement.value) }));
-ui.voicePlaybackMode.addEventListener("change", () => updateSelectedTrack({ voicePlaybackMode: ui.voicePlaybackMode.value }));
+ui.mode.addEventListener("change", () => updateSelectedVoice({ mode: ui.mode.value }));
+ui.grainLocation.addEventListener("change", () => updateSelectedVoice({ grainLocation: ui.grainLocation.value }));
+ui.voicePlacement.addEventListener("input", () => updateSelectedVoice({ voicePlacement: Number(ui.voicePlacement.value) }));
+ui.voicePlaybackMode.addEventListener("change", () => updateSelectedVoice({ voicePlaybackMode: ui.voicePlaybackMode.value }));
 ui.trackRate.addEventListener("change", () => updateSelectedTrack({ rate: ui.trackRate.value }));
 ui.patternVoiceSelect.addEventListener("change", () => {
-  state.selectedTrackIndex = Number(ui.patternVoiceSelect.value);
-  syncUi();
-  renderTrackSelector();
-  renderEffectsMatrix();
-  renderMixer();
-  renderPattern();
-  drawWaveform();
-  writeStoredSession();
+  updateSelectedTrack({ voiceIndex: Number(ui.patternVoiceSelect.value) });
 });
 ui.bpm.addEventListener("input", () => {
   state.bpm = Number(ui.bpm.value);
@@ -1886,12 +1973,12 @@ ui.mixVolume.addEventListener("input", () => {
   syncUi();
   writeStoredSession();
 });
-ui.grainSize.addEventListener("input", () => updateSelectedTrack({ grainSize: Number(ui.grainSize.value) }));
-ui.grainDensity.addEventListener("input", () => updateSelectedTrack({ grainDensity: Number(ui.grainDensity.value) }));
-ui.spray.addEventListener("input", () => updateSelectedTrack({ spray: Number(ui.spray.value) }));
-ui.pitch.addEventListener("input", () => updateSelectedTrack({ pitch: Number(ui.pitch.value) }));
-ui.chopGate.addEventListener("input", () => updateSelectedTrack({ chopGate: Number(ui.chopGate.value) }));
-ui.reverse.addEventListener("change", () => updateSelectedTrack({ reverse: ui.reverse.checked }));
+ui.grainSize.addEventListener("input", () => updateSelectedVoice({ grainSize: Number(ui.grainSize.value) }));
+ui.grainDensity.addEventListener("input", () => updateSelectedVoice({ grainDensity: Number(ui.grainDensity.value) }));
+ui.spray.addEventListener("input", () => updateSelectedVoice({ spray: Number(ui.spray.value) }));
+ui.pitch.addEventListener("input", () => updateSelectedVoice({ pitch: Number(ui.pitch.value) }));
+ui.chopGate.addEventListener("input", () => updateSelectedVoice({ chopGate: Number(ui.chopGate.value) }));
+ui.reverse.addEventListener("change", () => updateSelectedVoice({ reverse: ui.reverse.checked }));
 ui.filterFrequency.addEventListener("input", () => {
   updateTrackFilter(state.filterOverlay.trackIndex, { frequency: Number(ui.filterFrequency.value) });
 });
