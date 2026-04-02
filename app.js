@@ -18,6 +18,7 @@ const ui = {
   fillDensity: document.querySelector("#fill-density"),
   fillDensityValue: document.querySelector("#fill-density-value"),
   trackSelector: document.querySelector("#track-selector"),
+  patternVoiceSelect: document.querySelector("#pattern-voice-select"),
   mode: document.querySelector("#mode"),
   grainLocation: document.querySelector("#grain-location"),
   voicePlacementField: document.querySelector("#voice-placement-field"),
@@ -872,6 +873,11 @@ function formatModeLabel(mode) {
   return mode === "granular" ? "grain" : mode;
 }
 
+function formatVoiceName(track, index) {
+  const sourceName = track?.name ?? `Track ${index + 1}`;
+  return sourceName.startsWith("Track ") ? sourceName.replace("Track ", "Voice ") : sourceName;
+}
+
 function formatFilterTypeLabel(type) {
   if (type === "highpass") return "HP";
   if (type === "bandpass") return "BP";
@@ -1488,12 +1494,12 @@ function renderTrackSelector() {
   ui.trackSelector.innerHTML = "";
   state.tracks.forEach((track, index) => {
     const chip = document.createElement("div");
-    chip.className = `track-chip${index === state.selectedTrackIndex ? " active" : ""}${track.muted ? " muted" : ""}${track.solo ? " soloed" : ""}`;
+    chip.className = `track-chip${index === state.selectedTrackIndex ? " active" : ""}`;
     applyTrackColor(chip, track.color);
 
     const selectButton = document.createElement("button");
     selectButton.className = "track-chip-main";
-    selectButton.innerHTML = `<span class="track-chip-name">${track.name}</span><span class="track-chip-mode">${formatModeLabel(track.mode)}</span>`;
+    selectButton.innerHTML = `<span class="track-chip-name">${formatVoiceName(track, index)}</span><span class="track-chip-mode">${formatModeLabel(track.mode)}</span>`;
     selectButton.addEventListener("click", () => {
       state.selectedTrackIndex = index;
       syncUi();
@@ -1505,43 +1511,6 @@ function renderTrackSelector() {
       writeStoredSession();
     });
     chip.append(selectButton);
-
-    const actions = document.createElement("div");
-    actions.className = "track-chip-actions";
-
-    const muteButton = document.createElement("button");
-    muteButton.className = `track-mini${track.muted ? " active" : ""}`;
-    muteButton.textContent = "M";
-    applyTrackColor(muteButton, track.color);
-    muteButton.addEventListener("click", () => {
-      track.muted = !track.muted;
-      if (track.muted) track.solo = false;
-      syncUi();
-      renderTrackSelector();
-      renderEffectsMatrix();
-      renderMixer();
-      renderPattern();
-      writeStoredSession();
-    });
-    actions.append(muteButton);
-
-    const soloButton = document.createElement("button");
-    soloButton.className = `track-mini${track.solo ? " active" : ""}`;
-    soloButton.textContent = "S";
-    applyTrackColor(soloButton, track.color);
-    soloButton.addEventListener("click", () => {
-      track.solo = !track.solo;
-      if (track.solo) track.muted = false;
-      syncUi();
-      renderTrackSelector();
-      renderEffectsMatrix();
-      renderMixer();
-      renderPattern();
-      writeStoredSession();
-    });
-    actions.append(soloButton);
-
-    chip.append(actions);
     ui.trackSelector.append(chip);
   });
 }
@@ -1555,8 +1524,11 @@ function renderMixer() {
 
     const head = document.createElement("div");
     head.className = "mixer-head";
-    head.innerHTML = `<span class="mixer-name">${track.name}</span><span class="mixer-value">${Math.round(track.volume * 100)}%</span>`;
+    head.innerHTML = `<span class="mixer-name">${formatVoiceName(track, index)}</span><span class="mixer-value">${Math.round(track.volume * 100)}%</span>`;
     strip.append(head);
+
+    const controls = document.createElement("div");
+    controls.className = "mixer-controls";
 
     const slider = document.createElement("input");
     slider.type = "range";
@@ -1569,7 +1541,45 @@ function renderMixer() {
       renderMixer();
       writeStoredSession();
     });
-    strip.append(slider);
+    controls.append(slider);
+
+    const actionStack = document.createElement("div");
+    actionStack.className = "mixer-action-stack";
+
+    const muteButton = document.createElement("button");
+    muteButton.className = `mixer-mini${track.muted ? " active" : ""}`;
+    muteButton.textContent = "M";
+    applyTrackColor(muteButton, track.color);
+    muteButton.addEventListener("click", () => {
+      track.muted = !track.muted;
+      if (track.muted) track.solo = false;
+      syncUi();
+      renderTrackSelector();
+      renderEffectsMatrix();
+      renderMixer();
+      renderPattern();
+      writeStoredSession();
+    });
+    actionStack.append(muteButton);
+
+    const soloButton = document.createElement("button");
+    soloButton.className = `mixer-mini${track.solo ? " active" : ""}`;
+    soloButton.textContent = "S";
+    applyTrackColor(soloButton, track.color);
+    soloButton.addEventListener("click", () => {
+      track.solo = !track.solo;
+      if (track.solo) track.muted = false;
+      syncUi();
+      renderTrackSelector();
+      renderEffectsMatrix();
+      renderMixer();
+      renderPattern();
+      writeStoredSession();
+    });
+    actionStack.append(soloButton);
+
+    controls.append(actionStack);
+    strip.append(controls);
 
     ui.mixerGrid.append(strip);
   });
@@ -1726,6 +1736,7 @@ function syncUi() {
   ui.swing.value = String(state.swing);
   ui.swingValue.textContent = `${state.swing}%`;
   ui.trackRate.value = track.rate;
+  ui.patternVoiceSelect.value = String(state.selectedTrackIndex);
   ui.fillDensity.value = String(state.fillDensity);
   ui.mixVolume.value = String(Math.round(state.mixVolume * 100));
   ui.mixVolumeValue.textContent = `${Math.round(state.mixVolume * 100)}%`;
@@ -1844,6 +1855,16 @@ ui.grainLocation.addEventListener("change", () => updateSelectedTrack({ grainLoc
 ui.voicePlacement.addEventListener("input", () => updateSelectedTrack({ voicePlacement: Number(ui.voicePlacement.value) }));
 ui.voicePlaybackMode.addEventListener("change", () => updateSelectedTrack({ voicePlaybackMode: ui.voicePlaybackMode.value }));
 ui.trackRate.addEventListener("change", () => updateSelectedTrack({ rate: ui.trackRate.value }));
+ui.patternVoiceSelect.addEventListener("change", () => {
+  state.selectedTrackIndex = Number(ui.patternVoiceSelect.value);
+  syncUi();
+  renderTrackSelector();
+  renderEffectsMatrix();
+  renderMixer();
+  renderPattern();
+  drawWaveform();
+  writeStoredSession();
+});
 ui.bpm.addEventListener("input", () => {
   state.bpm = Number(ui.bpm.value);
   syncUi();
