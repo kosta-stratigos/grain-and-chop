@@ -57,8 +57,8 @@ const ui = {
 };
 
 const STORAGE_KEY = "granular-chop-lab:session";
-const DEFAULT_SAMPLE_URL = "./samples/bird_singing_-_amsel_-_blackbird_1_z9i.wav";
-const DEFAULT_SAMPLE_NAME = "bird_singing_-_amsel_-_blackbird_1_z9i.wav";
+const DEFAULT_SAMPLE_URL = "./samples/95721__elankford__pump-organ-mid-c.wav";
+const DEFAULT_SAMPLE_NAME = "95721__elankford__pump-organ-mid-c.wav";
 const SAMPLE_LIBRARY = [
   { name: "bird_singing_-_amsel_-_blackbird_1_z9i.wav", url: "./samples/bird_singing_-_amsel_-_blackbird_1_z9i.wav" },
   { name: "orthodox_priest_singing_1_r8j.wav", url: "./samples/orthodox_priest_singing_1_r8j.wav" },
