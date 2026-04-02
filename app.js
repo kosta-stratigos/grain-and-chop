@@ -481,6 +481,7 @@ const state = {
     effectKey: "filter",
   },
   defaultSampleLoaded: false,
+  defaultSampleLoadPromise: null,
   currentSampleName: "",
   fillDensity: 50,
   mixVolume: 0.9,
@@ -642,25 +643,32 @@ function isTrackAudible(track) {
 
 async function loadDefaultSample() {
   if (state.defaultSampleLoaded || state.sample.buffer) return;
+  if (state.defaultSampleLoadPromise) return state.defaultSampleLoadPromise;
 
-  try {
-    if (!state.audioContext) {
-      state.audioContext = createAudioContext();
-      state.playback = new PlaybackLayer(state.audioContext, state.sample);
-      state.transport = new TransportLayer(state.audioContext, state.playback, state);
-      state.transport.onStep = updateCurrentStep;
-      state.playback.output.gain.value = state.mixVolume;
+  state.defaultSampleLoadPromise = (async () => {
+    try {
+      if (!state.audioContext) {
+        state.audioContext = createAudioContext();
+        state.playback = new PlaybackLayer(state.audioContext, state.sample);
+        state.transport = new TransportLayer(state.audioContext, state.playback, state);
+        state.transport.onStep = updateCurrentStep;
+        state.playback.output.gain.value = state.mixVolume;
+      }
+
+      await loadSampleSource(async () => {
+        const response = await fetch(DEFAULT_SAMPLE_URL);
+        if (!response.ok) throw new Error(`request failed (${response.status})`);
+        const data = await response.arrayBuffer();
+        await state.sample.loadArrayBuffer(data, state.audioContext);
+      }, DEFAULT_SAMPLE_NAME, { preview: false });
+    } catch (error) {
+      console.error(`Default sample load failed: ${error.message}`);
+    } finally {
+      state.defaultSampleLoadPromise = null;
     }
+  })();
 
-    await loadSampleSource(async () => {
-      const response = await fetch(DEFAULT_SAMPLE_URL);
-      if (!response.ok) throw new Error(`request failed (${response.status})`);
-      const data = await response.arrayBuffer();
-      await state.sample.loadArrayBuffer(data, state.audioContext);
-    }, DEFAULT_SAMPLE_NAME, { preview: false });
-  } catch (error) {
-    console.error(`Default sample load failed: ${error.message}`);
-  }
+  return state.defaultSampleLoadPromise;
 }
 
 function ensureAudio() {
@@ -1670,6 +1678,9 @@ ui.waveformOverview.addEventListener("pointerleave", () => {
 ui.transportToggle.addEventListener("click", async () => {
   try {
     await ensureAudio();
+    if (!state.sample.buffer && !state.defaultSampleLoaded) {
+      await loadDefaultSample();
+    }
     if (isTransportRunning()) {
       state.transport.stop();
       syncTransportButton();
@@ -1701,6 +1712,9 @@ window.addEventListener("keydown", async (event) => {
   event.preventDefault();
   try {
     await ensureAudio();
+    if (!state.sample.buffer && !state.defaultSampleLoaded) {
+      await loadDefaultSample();
+    }
     if (!state.sample.buffer) {
       setDiagnostics("space trigger ignored because no sample is loaded.", "warn");
       return;
