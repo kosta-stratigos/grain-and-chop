@@ -784,6 +784,7 @@ const state = {
   sampleLoading: false,
   sampleLoadingDots: 0,
   sampleLoadingIntervalId: null,
+  mixerAnimationFrameId: null,
   currentSampleName: "",
   fillDensity: 50,
   mixVolume: 0.9,
@@ -1068,6 +1069,55 @@ function formatPanValue(pan) {
   const amount = Math.round(Math.abs(clampPan(pan)) * 100);
   if (amount === 0) return "C";
   return `${clampPan(pan) < 0 ? "L" : "R"}${amount}`;
+}
+
+function getTrackModulationValues(track, timeSeconds = 0) {
+  const drift = getTrackDrift(track);
+  const swell = getTrackSwell(track);
+  const basePan = clampPan(track.pan);
+  const baseVolume = Math.max(0, Math.min(1, track.volume));
+  const driftAmplitude = drift.enabled ? (clampUnitPercent(drift.depth, 0) / 100) * Math.max(0, 1 - Math.abs(basePan)) : 0;
+  const swellAmplitude = swell.enabled ? (clampUnitPercent(swell.depth, 0) / 100) * Math.max(0, Math.min(baseVolume, 1 - baseVolume)) : 0;
+  const driftPhase = drift.enabled ? Math.sin((timeSeconds / Math.max(0.001, clampLfoRateMs(drift.rate) / 1000)) * Math.PI * 2) : 0;
+  const swellPhase = swell.enabled ? Math.sin((timeSeconds / Math.max(0.001, clampLfoRateMs(swell.rate) / 1000)) * Math.PI * 2) : 0;
+
+  return {
+    pan: clampPan(basePan + driftPhase * driftAmplitude),
+    volume: Math.max(0, Math.min(1, baseVolume + swellPhase * swellAmplitude)),
+  };
+}
+
+function paintMixerModulation() {
+  if (!ui.mixerGrid) return;
+  const timeSeconds = state.audioContext ? state.audioContext.currentTime : 0;
+  ui.mixerGrid.querySelectorAll(".mixer-strip").forEach((strip) => {
+    const trackIndex = Number(strip.dataset.trackIndex);
+    const track = state.tracks[trackIndex];
+    if (!track) return;
+    const modulation = getTrackModulationValues(track, timeSeconds);
+
+    const volumeSlider = strip.querySelector('[data-mixer-role="volume"]');
+    if (volumeSlider instanceof HTMLInputElement) {
+      volumeSlider.value = String(Math.round(modulation.volume * 100));
+      updateRangeFill(volumeSlider);
+    }
+
+    const panSlider = strip.querySelector('[data-mixer-role="pan"]');
+    if (panSlider instanceof HTMLInputElement) {
+      panSlider.value = String(Math.round(modulation.pan * 100));
+      updateRangeFill(panSlider);
+    }
+  });
+}
+
+function animateMixerModulation() {
+  paintMixerModulation();
+  state.mixerAnimationFrameId = window.requestAnimationFrame(animateMixerModulation);
+}
+
+function ensureMixerAnimation() {
+  if (state.mixerAnimationFrameId) return;
+  state.mixerAnimationFrameId = window.requestAnimationFrame(animateMixerModulation);
 }
 
 function getTrackVoice(track) {
@@ -1854,6 +1904,7 @@ function renderMixer() {
   state.tracks.forEach((track, index) => {
     const strip = document.createElement("div");
     strip.className = `mixer-strip${index === state.selectedTrackIndex ? " active" : ""}`;
+    strip.dataset.trackIndex = String(index);
     applyTrackColor(strip, track.color);
 
     const head = document.createElement("div");
@@ -1877,6 +1928,7 @@ function renderMixer() {
     slider.min = "0";
     slider.max = "100";
     slider.value = String(Math.round(track.volume * 100));
+    slider.dataset.mixerRole = "volume";
     slider.addEventListener("input", () => {
       track.volume = Number(slider.value) / 100;
       state.playback?.updateTrackBus(index, track);
@@ -1905,6 +1957,7 @@ function renderMixer() {
     panSlider.min = "-100";
     panSlider.max = "100";
     panSlider.value = String(Math.round(clampPan(track.pan) * 100));
+    panSlider.dataset.mixerRole = "pan";
     panSlider.addEventListener("input", () => {
       track.pan = Number(panSlider.value) / 100;
       state.playback?.updateTrackBus(index, track);
@@ -1959,6 +2012,8 @@ function renderMixer() {
     strip.append(controls);
     ui.mixerGrid.append(strip);
   });
+  paintMixerModulation();
+  ensureMixerAnimation();
 }
 
 function renderEffectsMatrix() {
