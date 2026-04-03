@@ -498,6 +498,16 @@ select {
   color: var(--text);
 }
 
+input[type="text"] {
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+}
+
 select,
 input[type="range"] {
   accent-color: var(--accent);
@@ -730,6 +740,61 @@ input[type="range"]::-moz-range-thumb {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+}
+
+.dual-range-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.dual-range {
+  position: relative;
+  height: 22px;
+}
+
+.dual-range-track,
+.dual-range-fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 4px;
+  border-radius: 3px;
+}
+
+.dual-range-track {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.dual-range-fill {
+  left: var(--range-start, 0%);
+  right: calc(100% - var(--range-end, 100%));
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+}
+
+.dual-range-input {
+  position: absolute;
+  inset: 0;
+  background: transparent;
+  pointer-events: none;
+}
+
+.dual-range-input::-webkit-slider-runnable-track {
+  background: transparent;
+}
+
+.dual-range-input::-moz-range-track,
+.dual-range-input::-moz-range-progress {
+  background: transparent;
+}
+
+.dual-range-input::-webkit-slider-thumb,
+.dual-range-input::-moz-range-thumb {
+  pointer-events: auto;
 }
 
 .sample-browser-sections {
