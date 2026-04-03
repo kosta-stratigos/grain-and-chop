@@ -994,6 +994,8 @@ function applyStoredSession() {
     ];
     state.tracks = [legacyTrack, ...Array.from({ length: TRACK_COUNT - 1 }, (_, index) => createTrack(index + 2))];
   }
+
+  syncAllTrackBuses();
 }
 
 function setDiagnostics(message, level = "warn") {
@@ -1028,6 +1030,13 @@ function isTrackAudible(track) {
   return hasSoloTrack() ? track.solo : true;
 }
 
+function syncAllTrackBuses() {
+  if (!state.playback) return;
+  state.tracks.forEach((track, index) => {
+    state.playback.updateTrackBus(index, track);
+  });
+}
+
 async function loadDefaultSample() {
   if (state.defaultSampleLoaded || state.sample.buffer) return;
   if (state.defaultSampleLoadPromise) return state.defaultSampleLoadPromise;
@@ -1059,6 +1068,7 @@ function ensureAudio() {
     state.playback.output.gain.value = state.mixVolume;
   }
   return state.audioContext.resume().then(() => {
+    syncAllTrackBuses();
     setDiagnostics(`audio context running (${state.audioContext.state}).`, "ok");
   });
 }
