@@ -341,6 +341,64 @@
       </section>
     </div>
 
+    <div id="drift-overlay" class="overlay-shell is-hidden" aria-hidden="true">
+      <div class="overlay-backdrop" data-drift-overlay-close="true"></div>
+      <section class="overlay-panel" role="dialog" aria-modal="true" aria-labelledby="drift-overlay-title">
+        <div class="panel-head overlay-head">
+          <div class="panel-head-copy">
+            <h2 id="drift-overlay-title">Drift Settings</h2>
+            <p id="drift-overlay-track"></p>
+          </div>
+          <button id="drift-overlay-close" type="button">Close</button>
+        </div>
+        <div class="control-stack overlay-controls">
+          <label class="compact-field">
+            Rate
+            <div class="slider-row">
+              <input id="drift-rate" type="range" min="250" max="3000" step="10" value="1500" />
+              <span id="drift-rate-value" class="value-pill">1.50 s</span>
+            </div>
+          </label>
+          <label class="compact-field">
+            Depth
+            <div class="slider-row">
+              <input id="drift-depth" type="range" min="0" max="100" step="1" value="35" />
+              <span id="drift-depth-value" class="value-pill">35%</span>
+            </div>
+          </label>
+        </div>
+      </section>
+    </div>
+
+    <div id="swell-overlay" class="overlay-shell is-hidden" aria-hidden="true">
+      <div class="overlay-backdrop" data-swell-overlay-close="true"></div>
+      <section class="overlay-panel" role="dialog" aria-modal="true" aria-labelledby="swell-overlay-title">
+        <div class="panel-head overlay-head">
+          <div class="panel-head-copy">
+            <h2 id="swell-overlay-title">Swell Settings</h2>
+            <p id="swell-overlay-track"></p>
+          </div>
+          <button id="swell-overlay-close" type="button">Close</button>
+        </div>
+        <div class="control-stack overlay-controls">
+          <label class="compact-field">
+            Rate
+            <div class="slider-row">
+              <input id="swell-rate" type="range" min="250" max="3000" step="10" value="1800" />
+              <span id="swell-rate-value" class="value-pill">1.80 s</span>
+            </div>
+          </label>
+          <label class="compact-field">
+            Depth
+            <div class="slider-row">
+              <input id="swell-depth" type="range" min="0" max="100" step="1" value="30" />
+              <span id="swell-depth-value" class="value-pill">30%</span>
+            </div>
+          </label>
+        </div>
+      </section>
+    </div>
+
     <div id="sample-browser-overlay" class="overlay-shell is-hidden" aria-hidden="true">
       <div class="overlay-backdrop" data-sample-overlay-close="true"></div>
       <section class="overlay-panel sample-browser-panel" role="dialog" aria-modal="true" aria-labelledby="sample-browser-title">

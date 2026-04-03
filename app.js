@@ -58,6 +58,20 @@ const ui = {
   delayToneValue: document.querySelector("#delay-tone-value"),
   delayMix: document.querySelector("#delay-mix"),
   delayMixValue: document.querySelector("#delay-mix-value"),
+  driftOverlay: document.querySelector("#drift-overlay"),
+  driftOverlayTrack: document.querySelector("#drift-overlay-track"),
+  driftOverlayClose: document.querySelector("#drift-overlay-close"),
+  driftRate: document.querySelector("#drift-rate"),
+  driftRateValue: document.querySelector("#drift-rate-value"),
+  driftDepth: document.querySelector("#drift-depth"),
+  driftDepthValue: document.querySelector("#drift-depth-value"),
+  swellOverlay: document.querySelector("#swell-overlay"),
+  swellOverlayTrack: document.querySelector("#swell-overlay-track"),
+  swellOverlayClose: document.querySelector("#swell-overlay-close"),
+  swellRate: document.querySelector("#swell-rate"),
+  swellRateValue: document.querySelector("#swell-rate-value"),
+  swellDepth: document.querySelector("#swell-depth"),
+  swellDepthValue: document.querySelector("#swell-depth-value"),
   bpm: document.querySelector("#bpm"),
   bpmValue: document.querySelector("#bpm-value"),
   swing: document.querySelector("#swing"),
@@ -84,7 +98,7 @@ const TRACK_COUNT = 4;
 const TRACK_COLORS = ["#59d0ff", "#ff8f5a", "#8dff7a", "#ffd34d"];
 const TRACK_RATE_SPANS = { "1/1": 32, "1/2": 16, "1/4": 8, "1/8": 4, "1/16": 2, "1/32": 1 };
 const TRACK_RATE_VALUES = Object.keys(TRACK_RATE_SPANS);
-const EFFECT_KEYS = ["filter", "delay"];
+const EFFECT_KEYS = ["filter", "delay", "drift", "swell"];
 const FILTER_TYPES = ["lowpass", "bandpass", "highpass"];
 
 function updateRangeFill(input) {
@@ -123,6 +137,15 @@ function clampPan(value) {
   return Math.max(-1, Math.min(1, Number(value) || 0));
 }
 
+function clampLfoRateMs(value) {
+  return Math.max(250, Math.min(3000, Number(value) || 1500));
+}
+
+function clampUnitPercent(value, fallback = 0) {
+  const resolved = Number.isFinite(Number(value)) ? Number(value) : fallback;
+  return Math.max(0, Math.min(100, resolved));
+}
+
 function createDefaultFilterSettings() {
   return {
     enabled: false,
@@ -140,6 +163,22 @@ function createDefaultDelaySettings() {
     decay: 55,
     tone: 60,
     mix: 30,
+  };
+}
+
+function createDefaultDriftSettings() {
+  return {
+    enabled: false,
+    rate: 1500,
+    depth: 35,
+  };
+}
+
+function createDefaultSwellSettings() {
+  return {
+    enabled: false,
+    rate: 1800,
+    depth: 30,
   };
 }
 
@@ -163,10 +202,28 @@ function normalizeDelaySettings(source = {}, fallback = createDefaultDelaySettin
   };
 }
 
+function normalizeDriftSettings(source = {}, fallback = createDefaultDriftSettings()) {
+  return {
+    enabled: Boolean(source.enabled),
+    rate: clampLfoRateMs(source.rate ?? fallback.rate),
+    depth: clampUnitPercent(source.depth ?? fallback.depth, fallback.depth),
+  };
+}
+
+function normalizeSwellSettings(source = {}, fallback = createDefaultSwellSettings()) {
+  return {
+    enabled: Boolean(source.enabled),
+    rate: clampLfoRateMs(source.rate ?? fallback.rate),
+    depth: clampUnitPercent(source.depth ?? fallback.depth, fallback.depth),
+  };
+}
+
 function createTrackEffects(source = {}) {
   return {
     filter: normalizeFilterSettings(source.filter),
     delay: normalizeDelaySettings(source.delay),
+    drift: normalizeDriftSettings(source.drift),
+    swell: normalizeSwellSettings(source.swell),
   };
 }
 
@@ -257,10 +314,28 @@ class PlaybackLayer {
     const feedbackGain = this.audioContext.createGain();
     const outputGain = this.audioContext.createGain();
     const panNode = this.audioContext.createStereoPanner();
+    const panCenter = this.audioContext.createConstantSource();
+    const panLfo = this.audioContext.createOscillator();
+    const panLfoDepth = this.audioContext.createGain();
+    const gainCenter = this.audioContext.createConstantSource();
+    const gainLfo = this.audioContext.createOscillator();
+    const gainLfoDepth = this.audioContext.createGain();
 
     outputGain.connect(panNode);
     panNode.connect(this.output);
     delayTone.type = "lowpass";
+    panLfo.type = "sine";
+    gainLfo.type = "sine";
+    panCenter.connect(panNode.pan);
+    panLfo.connect(panLfoDepth);
+    panLfoDepth.connect(panNode.pan);
+    gainCenter.connect(outputGain.gain);
+    gainLfo.connect(gainLfoDepth);
+    gainLfoDepth.connect(outputGain.gain);
+    panCenter.start();
+    panLfo.start();
+    gainCenter.start();
+    gainLfo.start();
 
     const bus = {
       trackIndex,
@@ -274,6 +349,12 @@ class PlaybackLayer {
       feedbackGain,
       outputGain,
       panNode,
+      panCenter,
+      panLfo,
+      panLfoDepth,
+      gainCenter,
+      gainLfo,
+      gainLfoDepth,
     };
     return bus;
   }
@@ -281,7 +362,7 @@ class PlaybackLayer {
   updateTrackBus(trackIndex, track = this.state.tracks[trackIndex]) {
     const bus = this.trackBuses?.[trackIndex];
     if (!bus || !track) return;
-    const { input, filterNode, dryGain, delaySend, delayNode, delayTone, delayWetGain, feedbackGain, outputGain, panNode } = bus;
+    const { input, filterNode, dryGain, delaySend, delayNode, delayTone, delayWetGain, feedbackGain, outputGain, panNode, panCenter, panLfo, panLfoDepth, gainCenter, gainLfo, gainLfoDepth } = bus;
 
     input.disconnect();
     filterNode.disconnect();
@@ -294,8 +375,23 @@ class PlaybackLayer {
 
     const filter = track.effects.filter;
     const delay = track.effects.delay;
-    outputGain.gain.value = track.volume;
-    panNode.pan.setValueAtTime(clampPan(track.pan), this.audioContext.currentTime);
+    const drift = track.effects.drift;
+    const swell = track.effects.swell;
+    const basePan = clampPan(track.pan);
+    const baseVolume = Math.max(0, Math.min(1, track.volume));
+    const driftAmplitude = drift.enabled ? (clampUnitPercent(drift.depth, 0) / 100) * Math.max(0, 1 - Math.abs(basePan)) : 0;
+    const swellAmplitude = swell.enabled ? (clampUnitPercent(swell.depth, 0) / 100) * Math.max(0, Math.min(baseVolume, 1 - baseVolume)) : 0;
+    const driftFrequency = 1 / (clampLfoRateMs(drift.rate) / 1000);
+    const swellFrequency = 1 / (clampLfoRateMs(swell.rate) / 1000);
+
+    outputGain.gain.value = 0;
+    panNode.pan.value = 0;
+    panCenter.offset.setValueAtTime(basePan, this.audioContext.currentTime);
+    panLfo.frequency.setValueAtTime(driftFrequency, this.audioContext.currentTime);
+    panLfoDepth.gain.setValueAtTime(driftAmplitude, this.audioContext.currentTime);
+    gainCenter.offset.setValueAtTime(baseVolume, this.audioContext.currentTime);
+    gainLfo.frequency.setValueAtTime(swellFrequency, this.audioContext.currentTime);
+    gainLfoDepth.gain.setValueAtTime(swellAmplitude, this.audioContext.currentTime);
 
     let sourceStage = input;
     if (filter.enabled) {
@@ -673,6 +769,16 @@ const state = {
     trackIndex: 0,
     effectKey: "delay",
   },
+  driftOverlay: {
+    open: false,
+    trackIndex: 0,
+    effectKey: "drift",
+  },
+  swellOverlay: {
+    open: false,
+    trackIndex: 0,
+    effectKey: "swell",
+  },
   defaultSampleLoaded: false,
   defaultSampleLoadPromise: null,
   sampleLoading: false,
@@ -724,6 +830,8 @@ function normalizeTrack(index, source = {}) {
     effects: {
       filter: normalizeFilterSettings(source.effects?.filter ?? source.filter ?? fallback.effects.filter, fallback.effects.filter),
       delay: normalizeDelaySettings(source.effects?.delay ?? source.delay ?? fallback.effects.delay, fallback.effects.delay),
+      drift: normalizeDriftSettings(source.effects?.drift ?? source.drift ?? fallback.effects.drift, fallback.effects.drift),
+      swell: normalizeSwellSettings(source.effects?.swell ?? source.swell ?? fallback.effects.swell, fallback.effects.swell),
     },
     rate: TRACK_RATE_VALUES.includes(source.rate) ? source.rate : fallback.rate,
     pattern: Array.from({ length: MAX_PATTERN_CELLS }, (_, step) => Boolean(source.pattern?.[step] ?? fallback.pattern[step])),
@@ -788,6 +896,8 @@ function writeStoredSession() {
       effects: {
         filter: { ...track.effects.filter },
         delay: { ...track.effects.delay },
+        drift: { ...track.effects.drift },
+        swell: { ...track.effects.swell },
       },
       rate: track.rate,
       pattern: track.pattern.slice(0, MAX_PATTERN_CELLS),
@@ -1110,6 +1220,21 @@ function getTrackDelay(trackOrIndex) {
   return track?.effects?.delay ?? createDefaultDelaySettings();
 }
 
+function getTrackDrift(trackOrIndex) {
+  const track = Number.isInteger(trackOrIndex) ? state.tracks[trackOrIndex] : trackOrIndex;
+  return track?.effects?.drift ?? createDefaultDriftSettings();
+}
+
+function getTrackSwell(trackOrIndex) {
+  const track = Number.isInteger(trackOrIndex) ? state.tracks[trackOrIndex] : trackOrIndex;
+  return track?.effects?.swell ?? createDefaultSwellSettings();
+}
+
+function formatLfoRate(ms) {
+  if (ms >= 1000) return `${(ms / 1000).toFixed(ms % 1000 === 0 ? 0 : 2)} s`;
+  return `${Math.round(ms)} ms`;
+}
+
 function syncFilterOverlay() {
   if (!ui.filterOverlay) return;
   const isOpen = state.filterOverlay.open;
@@ -1153,6 +1278,42 @@ function syncDelayOverlay() {
   ui.delayToneValue.textContent = formatPercent(delay.tone);
   ui.delayMix.value = String(delay.mix);
   ui.delayMixValue.textContent = formatPercent(delay.mix);
+}
+
+function syncDriftOverlay() {
+  if (!ui.driftOverlay) return;
+  const isOpen = state.driftOverlay.open;
+  ui.driftOverlay.classList.toggle("is-hidden", !isOpen);
+  ui.driftOverlay.setAttribute("aria-hidden", String(!isOpen));
+  if (!isOpen) return;
+
+  const track = state.tracks[state.driftOverlay.trackIndex] ?? getSelectedTrack();
+  const drift = getTrackDrift(track);
+  if (ui.driftOverlayTrack) {
+    ui.driftOverlayTrack.textContent = `${track.name} • Drift ${drift.enabled ? "enabled" : "disabled"}`;
+  }
+  ui.driftRate.value = String(drift.rate);
+  ui.driftRateValue.textContent = formatLfoRate(drift.rate);
+  ui.driftDepth.value = String(drift.depth);
+  ui.driftDepthValue.textContent = formatPercent(drift.depth);
+}
+
+function syncSwellOverlay() {
+  if (!ui.swellOverlay) return;
+  const isOpen = state.swellOverlay.open;
+  ui.swellOverlay.classList.toggle("is-hidden", !isOpen);
+  ui.swellOverlay.setAttribute("aria-hidden", String(!isOpen));
+  if (!isOpen) return;
+
+  const track = state.tracks[state.swellOverlay.trackIndex] ?? getSelectedTrack();
+  const swell = getTrackSwell(track);
+  if (ui.swellOverlayTrack) {
+    ui.swellOverlayTrack.textContent = `${track.name} • Swell ${swell.enabled ? "enabled" : "disabled"}`;
+  }
+  ui.swellRate.value = String(swell.rate);
+  ui.swellRateValue.textContent = formatLfoRate(swell.rate);
+  ui.swellDepth.value = String(swell.depth);
+  ui.swellDepthValue.textContent = formatPercent(swell.depth);
 }
 
 function syncSampleBrowserOverlay() {
@@ -1293,6 +1454,8 @@ function updateOverviewRegionFromPointer(clientX) {
 function openFilterOverlay(trackIndex) {
   state.selectedTrackIndex = trackIndex;
   state.delayOverlay.open = false;
+  state.driftOverlay.open = false;
+  state.swellOverlay.open = false;
   state.filterOverlay = {
     open: true,
     trackIndex,
@@ -1315,6 +1478,8 @@ function closeFilterOverlay() {
 function openDelayOverlay(trackIndex) {
   state.selectedTrackIndex = trackIndex;
   state.filterOverlay.open = false;
+  state.driftOverlay.open = false;
+  state.swellOverlay.open = false;
   state.delayOverlay = {
     open: true,
     trackIndex,
@@ -1332,6 +1497,54 @@ function openDelayOverlay(trackIndex) {
 function closeDelayOverlay() {
   state.delayOverlay.open = false;
   syncDelayOverlay();
+}
+
+function openDriftOverlay(trackIndex) {
+  state.selectedTrackIndex = trackIndex;
+  state.filterOverlay.open = false;
+  state.delayOverlay.open = false;
+  state.swellOverlay.open = false;
+  state.driftOverlay = {
+    open: true,
+    trackIndex,
+    effectKey: "drift",
+  };
+  syncUi();
+  renderTrackSelector();
+  renderEffectsMatrix();
+  renderMixer();
+  renderPattern();
+  drawWaveform();
+  writeStoredSession();
+}
+
+function closeDriftOverlay() {
+  state.driftOverlay.open = false;
+  syncDriftOverlay();
+}
+
+function openSwellOverlay(trackIndex) {
+  state.selectedTrackIndex = trackIndex;
+  state.filterOverlay.open = false;
+  state.delayOverlay.open = false;
+  state.driftOverlay.open = false;
+  state.swellOverlay = {
+    open: true,
+    trackIndex,
+    effectKey: "swell",
+  };
+  syncUi();
+  renderTrackSelector();
+  renderEffectsMatrix();
+  renderMixer();
+  renderPattern();
+  drawWaveform();
+  writeStoredSession();
+}
+
+function closeSwellOverlay() {
+  state.swellOverlay.open = false;
+  syncSwellOverlay();
 }
 
 function setTrackIndicator(trackIndex, start, end, durationMs = 180) {
@@ -1770,7 +1983,16 @@ function renderEffectsMatrix() {
 
     const labelCell = document.createElement("div");
     labelCell.className = "effects-axis-label effects-row-label";
-    labelCell.textContent = effectKey === "filter" ? "Filter" : effectKey === "delay" ? "Delay" : effectKey;
+    labelCell.textContent =
+      effectKey === "filter"
+        ? "Filter"
+        : effectKey === "delay"
+          ? "Delay"
+          : effectKey === "drift"
+            ? "Drift"
+            : effectKey === "swell"
+              ? "Swell"
+              : effectKey;
     row.append(labelCell);
 
     state.tracks.forEach((track, trackIndex) => {
@@ -1779,7 +2001,15 @@ function renderEffectsMatrix() {
       button.className = `effects-cell effects-toggle${effect.enabled ? " active" : ""}${trackIndex === state.selectedTrackIndex ? " selected" : ""}`;
       applyTrackColor(button, track.color);
       button.textContent = effect.enabled
-        ? (effectKey === "filter" ? formatFilterTypeLabel(effect.type) : formatDelayTime(effect.time))
+        ? (
+          effectKey === "filter"
+            ? formatFilterTypeLabel(effect.type)
+            : effectKey === "delay"
+              ? formatDelayTime(effect.time)
+              : effectKey === "drift" || effectKey === "swell"
+                ? formatLfoRate(effect.rate)
+                : "On"
+        )
         : "Off";
       button.title = `${track.name} ${effectKey} ${effect.enabled ? "enabled" : "disabled"}`;
 
@@ -1806,6 +2036,8 @@ function renderEffectsMatrix() {
           button.classList.remove("is-armed");
           if (effectKey === "filter") openFilterOverlay(trackIndex);
           if (effectKey === "delay") openDelayOverlay(trackIndex);
+          if (effectKey === "drift") openDriftOverlay(trackIndex);
+          if (effectKey === "swell") openSwellOverlay(trackIndex);
         }, 1000);
       });
 
@@ -1910,6 +2142,8 @@ function syncUi() {
   syncTransportButton();
   syncFilterOverlay();
   syncDelayOverlay();
+  syncDriftOverlay();
+  syncSwellOverlay();
   ui.regionStart.value = String(Math.round(state.sample.regionStart * 1000));
   ui.regionEnd.value = String(Math.round(state.sample.regionEnd * 1000));
   ui.sliceCount.value = String(voice.sliceCount);
@@ -1963,6 +2197,26 @@ function updateTrackDelay(trackIndex, patch) {
   const track = state.tracks[trackIndex];
   if (!track) return;
   track.effects.delay = normalizeDelaySettings({ ...track.effects.delay, ...patch }, track.effects.delay);
+  state.playback?.updateTrackBus(trackIndex, track);
+  syncUi();
+  renderEffectsMatrix();
+  writeStoredSession();
+}
+
+function updateTrackDrift(trackIndex, patch) {
+  const track = state.tracks[trackIndex];
+  if (!track) return;
+  track.effects.drift = normalizeDriftSettings({ ...track.effects.drift, ...patch }, track.effects.drift);
+  state.playback?.updateTrackBus(trackIndex, track);
+  syncUi();
+  renderEffectsMatrix();
+  writeStoredSession();
+}
+
+function updateTrackSwell(trackIndex, patch) {
+  const track = state.tracks[trackIndex];
+  if (!track) return;
+  track.effects.swell = normalizeSwellSettings({ ...track.effects.swell, ...patch }, track.effects.swell);
   state.playback?.updateTrackBus(trackIndex, track);
   syncUi();
   renderEffectsMatrix();
@@ -2110,6 +2364,28 @@ ui.delayOverlay.addEventListener("click", (event) => {
   if (!(event.target instanceof HTMLElement)) return;
   if (event.target.dataset.delayOverlayClose === "true") closeDelayOverlay();
 });
+ui.driftRate.addEventListener("input", () => {
+  updateTrackDrift(state.driftOverlay.trackIndex, { rate: Number(ui.driftRate.value) });
+});
+ui.driftDepth.addEventListener("input", () => {
+  updateTrackDrift(state.driftOverlay.trackIndex, { depth: Number(ui.driftDepth.value) });
+});
+ui.driftOverlayClose.addEventListener("click", () => closeDriftOverlay());
+ui.driftOverlay.addEventListener("click", (event) => {
+  if (!(event.target instanceof HTMLElement)) return;
+  if (event.target.dataset.driftOverlayClose === "true") closeDriftOverlay();
+});
+ui.swellRate.addEventListener("input", () => {
+  updateTrackSwell(state.swellOverlay.trackIndex, { rate: Number(ui.swellRate.value) });
+});
+ui.swellDepth.addEventListener("input", () => {
+  updateTrackSwell(state.swellOverlay.trackIndex, { depth: Number(ui.swellDepth.value) });
+});
+ui.swellOverlayClose.addEventListener("click", () => closeSwellOverlay());
+ui.swellOverlay.addEventListener("click", (event) => {
+  if (!(event.target instanceof HTMLElement)) return;
+  if (event.target.dataset.swellOverlayClose === "true") closeSwellOverlay();
+});
 
 ui.sampleBrowserToggle.addEventListener("click", () => openSampleBrowser());
 ui.sampleBrowserClose.addEventListener("click", () => closeSampleBrowser());
@@ -2187,6 +2463,14 @@ window.addEventListener("keydown", async (event) => {
   }
   if (event.key === "Escape" && state.delayOverlay.open) {
     closeDelayOverlay();
+    return;
+  }
+  if (event.key === "Escape" && state.driftOverlay.open) {
+    closeDriftOverlay();
+    return;
+  }
+  if (event.key === "Escape" && state.swellOverlay.open) {
+    closeSwellOverlay();
     return;
   }
   if (event.key === "Escape" && state.sampleBrowserOpen) {
