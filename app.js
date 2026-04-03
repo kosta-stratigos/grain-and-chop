@@ -1645,7 +1645,7 @@ function renderMixer() {
 
     const head = document.createElement("div");
     head.className = "mixer-head";
-    head.innerHTML = `<span class="mixer-name">${formatTrackName(track, index)}</span><span class="mixer-value">${Math.round(track.volume * 100)}%</span>`;
+    head.innerHTML = `<span class="mixer-name">${formatTrackName(track, index)}</span>`;
     strip.append(head);
 
     const controls = document.createElement("div");
@@ -1707,12 +1707,12 @@ function renderMixer() {
     panRow.append(panValue);
     controls.append(panRow);
 
-    const actionStack = document.createElement("div");
-    actionStack.className = "mixer-action-stack";
+    const actionRow = document.createElement("div");
+    actionRow.className = "mixer-action-row";
 
     const muteButton = document.createElement("button");
     muteButton.className = `mixer-mini${track.muted ? " active" : ""}`;
-    muteButton.textContent = "M";
+    muteButton.textContent = "Mute";
     applyTrackColor(muteButton, track.color);
     muteButton.addEventListener("click", () => {
       track.muted = !track.muted;
@@ -1724,11 +1724,11 @@ function renderMixer() {
       renderPattern();
       writeStoredSession();
     });
-    actionStack.append(muteButton);
+    actionRow.append(muteButton);
 
     const soloButton = document.createElement("button");
     soloButton.className = `mixer-mini${track.solo ? " active" : ""}`;
-    soloButton.textContent = "S";
+    soloButton.textContent = "Solo";
     applyTrackColor(soloButton, track.color);
     soloButton.addEventListener("click", () => {
       track.solo = !track.solo;
@@ -1740,9 +1740,9 @@ function renderMixer() {
       renderPattern();
       writeStoredSession();
     });
-    actionStack.append(soloButton);
+    actionRow.append(soloButton);
 
-    controls.append(actionStack);
+    controls.append(actionRow);
     strip.append(controls);
     ui.mixerGrid.append(strip);
   });
