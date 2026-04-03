@@ -479,6 +479,7 @@ input[type="range"] {
   -webkit-appearance: none;
   height: 10px;
   background: transparent;
+  cursor: pointer;
 }
 
 select {
@@ -525,6 +526,7 @@ input[type="range"]::-webkit-slider-thumb {
   border-radius: 999px;
   background: var(--text);
   box-shadow: 0 0 0 1px rgba(6, 20, 16, 0.24);
+  cursor: pointer;
 }
 
 input[type="range"]::-moz-range-track {
@@ -548,6 +550,7 @@ input[type="range"]::-moz-range-thumb {
   border-radius: 999px;
   background: var(--text);
   box-shadow: 0 0 0 1px rgba(6, 20, 16, 0.24);
+  cursor: pointer;
 }
 
 .toggle-card {

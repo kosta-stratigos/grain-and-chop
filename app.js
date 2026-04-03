@@ -138,7 +138,7 @@ function clampPan(value) {
 }
 
 function clampLfoRateMs(value) {
-  return Math.max(250, Math.min(3000, Number(value) || 1500));
+  return Math.max(5, Math.min(10000, Number(value) || 1500));
 }
 
 function clampUnitPercent(value, fallback = 0) {
@@ -1090,20 +1090,23 @@ function getTrackModulationValues(track, timeSeconds = 0) {
 function paintMixerModulation() {
   if (!ui.mixerGrid) return;
   const timeSeconds = state.audioContext ? state.audioContext.currentTime : 0;
+  const transportRunning = isTransportRunning();
   ui.mixerGrid.querySelectorAll(".mixer-strip").forEach((strip) => {
     const trackIndex = Number(strip.dataset.trackIndex);
     const track = state.tracks[trackIndex];
     if (!track) return;
-    const modulation = getTrackModulationValues(track, timeSeconds);
+    const modulation = transportRunning
+      ? getTrackModulationValues(track, timeSeconds)
+      : { pan: clampPan(track.pan), volume: Math.max(0, Math.min(1, track.volume)) };
 
     const volumeSlider = strip.querySelector('[data-mixer-role="volume"]');
-    if (volumeSlider instanceof HTMLInputElement) {
+    if (volumeSlider instanceof HTMLInputElement && document.activeElement !== volumeSlider) {
       volumeSlider.value = String(Math.round(modulation.volume * 100));
       updateRangeFill(volumeSlider);
     }
 
     const panSlider = strip.querySelector('[data-mixer-role="pan"]');
-    if (panSlider instanceof HTMLInputElement) {
+    if (panSlider instanceof HTMLInputElement && document.activeElement !== panSlider) {
       panSlider.value = String(Math.round(modulation.pan * 100));
       updateRangeFill(panSlider);
     }
@@ -1112,11 +1115,15 @@ function paintMixerModulation() {
 
 function animateMixerModulation() {
   paintMixerModulation();
+  if (!isTransportRunning()) {
+    state.mixerAnimationFrameId = null;
+    return;
+  }
   state.mixerAnimationFrameId = window.requestAnimationFrame(animateMixerModulation);
 }
 
 function ensureMixerAnimation() {
-  if (state.mixerAnimationFrameId) return;
+  if (state.mixerAnimationFrameId || !isTransportRunning()) return;
   state.mixerAnimationFrameId = window.requestAnimationFrame(animateMixerModulation);
 }
 
@@ -1932,7 +1939,8 @@ function renderMixer() {
     slider.addEventListener("input", () => {
       track.volume = Number(slider.value) / 100;
       state.playback?.updateTrackBus(index, track);
-      renderMixer();
+      volumeValue.textContent = `${Math.round(track.volume * 100)}%`;
+      updateRangeFill(slider);
       writeStoredSession();
     });
     updateRangeFill(slider);
@@ -1961,7 +1969,8 @@ function renderMixer() {
     panSlider.addEventListener("input", () => {
       track.pan = Number(panSlider.value) / 100;
       state.playback?.updateTrackBus(index, track);
-      renderMixer();
+      panValue.textContent = formatPanValue(track.pan);
+      updateRangeFill(panSlider);
       writeStoredSession();
     });
     updateRangeFill(panSlider);
