@@ -772,7 +772,8 @@ input[type="range"]::-moz-range-thumb {
 
 .dual-range-fill {
   left: var(--range-start, 0%);
-  right: calc(100% - var(--range-end, 100%));
+  right: auto;
+  width: calc(var(--range-end, 100%) - var(--range-start, 0%));
   background: linear-gradient(90deg, var(--accent), var(--accent-2));
 }
 
@@ -780,7 +781,8 @@ input[type="range"]::-moz-range-thumb {
   position: absolute;
   inset: 0;
   background: transparent;
-  pointer-events: none;
+  pointer-events: auto;
+  z-index: 2;
 }
 
 .dual-range-input::-webkit-slider-runnable-track {
@@ -795,6 +797,8 @@ input[type="range"]::-moz-range-thumb {
 .dual-range-input::-webkit-slider-thumb,
 .dual-range-input::-moz-range-thumb {
   pointer-events: auto;
+  position: relative;
+  z-index: 3;
 }
 
 .sample-browser-sections {

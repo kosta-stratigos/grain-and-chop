@@ -1354,6 +1354,27 @@ function syncDualRange(container, minValue, maxValue, minAllowed, maxAllowed) {
   container.style.setProperty("--range-end", `${end}%`);
 }
 
+function bindDualRangeBar(container, minInput, maxInput, minAllowed, maxAllowed, onChange) {
+  if (!(container instanceof HTMLElement) || !(minInput instanceof HTMLInputElement) || !(maxInput instanceof HTMLInputElement)) return;
+  container.addEventListener("pointerdown", (event) => {
+    if (event.target === minInput || event.target === maxInput) return;
+    const rect = container.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    const normalized = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+    const nextValue = Math.round(minAllowed + normalized * (maxAllowed - minAllowed));
+    const currentMin = Number(minInput.value);
+    const currentMax = Number(maxInput.value);
+
+    if (Math.abs(nextValue - currentMin) <= Math.abs(nextValue - currentMax)) {
+      minInput.value = String(Math.min(nextValue, currentMax));
+    } else {
+      maxInput.value = String(Math.max(nextValue, currentMin));
+    }
+
+    onChange();
+  });
+}
+
 function syncFilterOverlay() {
   if (!ui.filterOverlay) return;
   const isOpen = state.filterOverlay.open;
@@ -2535,6 +2556,16 @@ ui.swellRangeMax.addEventListener("input", () => {
   const minValue = Math.min(Number(ui.swellRangeMin.value), Number(ui.swellRangeMax.value));
   ui.swellRangeMin.value = String(minValue);
   updateTrackSwell(state.swellOverlay.trackIndex, { rangeMin: minValue, rangeMax: Number(ui.swellRangeMax.value) });
+});
+bindDualRangeBar(ui.driftRange, ui.driftRangeMin, ui.driftRangeMax, -100, 100, () => {
+  const minValue = Number(ui.driftRangeMin.value);
+  const maxValue = Number(ui.driftRangeMax.value);
+  updateTrackDrift(state.driftOverlay.trackIndex, { rangeMin: Math.min(minValue, maxValue), rangeMax: Math.max(minValue, maxValue) });
+});
+bindDualRangeBar(ui.swellRange, ui.swellRangeMin, ui.swellRangeMax, 0, 100, () => {
+  const minValue = Number(ui.swellRangeMin.value);
+  const maxValue = Number(ui.swellRangeMax.value);
+  updateTrackSwell(state.swellOverlay.trackIndex, { rangeMin: Math.min(minValue, maxValue), rangeMax: Math.max(minValue, maxValue) });
 });
 ui.swellOverlayClose.addEventListener("click", () => closeSwellOverlay());
 ui.swellOverlay.addEventListener("click", (event) => {
