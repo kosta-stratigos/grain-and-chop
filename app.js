@@ -2609,6 +2609,7 @@ ui.transportToggle.addEventListener("click", async () => {
     }
     if (isTransportRunning()) {
       state.transport.stop();
+      paintMixerModulation();
       syncTransportButton();
       setDiagnostics("sequence paused.", "warn");
       return;
@@ -2618,6 +2619,8 @@ ui.transportToggle.addEventListener("click", async () => {
       return;
     }
     state.transport.start();
+    paintMixerModulation();
+    ensureMixerAnimation();
     syncTransportButton();
     setDiagnostics(`sequence running at ${state.bpm} BPM across ${TRACK_COUNT} tracks.`, "ok");
   } catch (error) {
