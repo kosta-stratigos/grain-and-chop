@@ -365,11 +365,13 @@ h2 {
   display: grid;
   gap: 1px;
   text-align: left;
+  width: 100%;
   padding: 0;
   border: 0;
   background: transparent;
   border-radius: 0;
   min-width: 0;
+  cursor: pointer;
 }
 
 .track-chip-name {
