@@ -119,6 +119,10 @@ function clampFilterQ(value) {
   return Math.max(0.1, Math.min(20, Number(value) || 0.8));
 }
 
+function clampPan(value) {
+  return Math.max(-1, Math.min(1, Number(value) || 0));
+}
+
 function createDefaultFilterSettings() {
   return {
     enabled: false,
@@ -252,8 +256,10 @@ class PlaybackLayer {
     const delayWetGain = this.audioContext.createGain();
     const feedbackGain = this.audioContext.createGain();
     const outputGain = this.audioContext.createGain();
+    const panNode = this.audioContext.createStereoPanner();
 
-    outputGain.connect(this.output);
+    outputGain.connect(panNode);
+    panNode.connect(this.output);
     delayTone.type = "lowpass";
 
     const bus = {
@@ -267,6 +273,7 @@ class PlaybackLayer {
       delayWetGain,
       feedbackGain,
       outputGain,
+      panNode,
     };
     return bus;
   }
@@ -274,7 +281,7 @@ class PlaybackLayer {
   updateTrackBus(trackIndex, track = this.state.tracks[trackIndex]) {
     const bus = this.trackBuses?.[trackIndex];
     if (!bus || !track) return;
-    const { input, filterNode, dryGain, delaySend, delayNode, delayTone, delayWetGain, feedbackGain, outputGain } = bus;
+    const { input, filterNode, dryGain, delaySend, delayNode, delayTone, delayWetGain, feedbackGain, outputGain, panNode } = bus;
 
     input.disconnect();
     filterNode.disconnect();
@@ -288,6 +295,7 @@ class PlaybackLayer {
     const filter = track.effects.filter;
     const delay = track.effects.delay;
     outputGain.gain.value = track.volume;
+    panNode.pan.setValueAtTime(clampPan(track.pan), this.audioContext.currentTime);
 
     let sourceStage = input;
     if (filter.enabled) {
@@ -608,6 +616,7 @@ function createTrack(id) {
     muted: false,
     solo: false,
     volume: 0.85,
+    pan: 0,
     effects: createTrackEffects(),
     rate: "1/16",
     pattern: Array.from({ length: MAX_PATTERN_CELLS }, (_, index) => (index + id - 1) % 4 === 0),
@@ -711,6 +720,7 @@ function normalizeTrack(index, source = {}) {
     muted: Boolean(source.muted),
     solo: Boolean(source.solo),
     volume: Math.max(0, Math.min(1, Number(source.volume) || fallback.volume)),
+    pan: clampPan(source.pan ?? fallback.pan),
     effects: {
       filter: normalizeFilterSettings(source.effects?.filter ?? source.filter ?? fallback.effects.filter, fallback.effects.filter),
       delay: normalizeDelaySettings(source.effects?.delay ?? source.delay ?? fallback.effects.delay, fallback.effects.delay),
@@ -774,6 +784,7 @@ function writeStoredSession() {
       muted: track.muted,
       solo: track.solo,
       volume: track.volume,
+      pan: track.pan,
       effects: {
         filter: { ...track.effects.filter },
         delay: { ...track.effects.delay },
@@ -941,6 +952,12 @@ function formatVoiceName(track, index) {
 
 function formatTrackName(track, index) {
   return track?.name ?? `Track ${index + 1}`;
+}
+
+function formatPanValue(pan) {
+  const amount = Math.round(Math.abs(clampPan(pan)) * 100);
+  if (amount === 0) return "C";
+  return `${clampPan(pan) < 0 ? "L" : "R"}${amount}`;
 }
 
 function getTrackVoice(track) {
@@ -1622,9 +1639,6 @@ function renderTrackSelector() {
 function renderMixer() {
   ui.mixerGrid.innerHTML = "";
   state.tracks.forEach((track, index) => {
-    const row = document.createElement("div");
-    row.className = "mixer-row";
-
     const strip = document.createElement("div");
     strip.className = `mixer-strip${index === state.selectedTrackIndex ? " active" : ""}`;
     applyTrackColor(strip, track.color);
@@ -1636,6 +1650,14 @@ function renderMixer() {
 
     const controls = document.createElement("div");
     controls.className = "mixer-controls";
+
+    const volumeRow = document.createElement("div");
+    volumeRow.className = "mixer-control-row";
+
+    const volumeLabel = document.createElement("span");
+    volumeLabel.className = "mixer-control-label";
+    volumeLabel.textContent = "Vol";
+    volumeRow.append(volumeLabel);
 
     const slider = document.createElement("input");
     slider.type = "range";
@@ -1649,7 +1671,41 @@ function renderMixer() {
       writeStoredSession();
     });
     updateRangeFill(slider);
-    controls.append(slider);
+    volumeRow.append(slider);
+
+    const volumeValue = document.createElement("span");
+    volumeValue.className = "mixer-control-value";
+    volumeValue.textContent = `${Math.round(track.volume * 100)}%`;
+    volumeRow.append(volumeValue);
+    controls.append(volumeRow);
+
+    const panRow = document.createElement("div");
+    panRow.className = "mixer-control-row";
+
+    const panLabel = document.createElement("span");
+    panLabel.className = "mixer-control-label";
+    panLabel.textContent = "Pan";
+    panRow.append(panLabel);
+
+    const panSlider = document.createElement("input");
+    panSlider.type = "range";
+    panSlider.min = "-100";
+    panSlider.max = "100";
+    panSlider.value = String(Math.round(clampPan(track.pan) * 100));
+    panSlider.addEventListener("input", () => {
+      track.pan = Number(panSlider.value) / 100;
+      state.playback?.updateTrackBus(index, track);
+      renderMixer();
+      writeStoredSession();
+    });
+    updateRangeFill(panSlider);
+    panRow.append(panSlider);
+
+    const panValue = document.createElement("span");
+    panValue.className = "mixer-control-value";
+    panValue.textContent = formatPanValue(track.pan);
+    panRow.append(panValue);
+    controls.append(panRow);
 
     const actionStack = document.createElement("div");
     actionStack.className = "mixer-action-stack";
@@ -1686,11 +1742,9 @@ function renderMixer() {
     });
     actionStack.append(soloButton);
 
+    controls.append(actionStack);
     strip.append(controls);
-    row.append(strip);
-    row.append(actionStack);
-
-    ui.mixerGrid.append(row);
+    ui.mixerGrid.append(strip);
   });
 }
 
