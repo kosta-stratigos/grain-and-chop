@@ -1580,7 +1580,7 @@ function drawWaveform() {
     ctx.fillStyle = track.color;
     ctx.font = labelFont;
     ctx.textBaseline = "middle";
-    ctx.fillText(formatTrackName(track, trackIndex), labelLeft, laneMiddle);
+    ctx.fillText(formatVoiceName(getTrackVoice(track), track.voiceIndex), labelLeft, laneMiddle);
   });
 
   drawWaveformOverview();
@@ -1622,6 +1622,9 @@ function renderTrackSelector() {
 function renderMixer() {
   ui.mixerGrid.innerHTML = "";
   state.tracks.forEach((track, index) => {
+    const row = document.createElement("div");
+    row.className = "mixer-row";
+
     const strip = document.createElement("div");
     strip.className = `mixer-strip${index === state.selectedTrackIndex ? " active" : ""}`;
     applyTrackColor(strip, track.color);
@@ -1683,10 +1686,11 @@ function renderMixer() {
     });
     actionStack.append(soloButton);
 
-    controls.append(actionStack);
     strip.append(controls);
+    row.append(strip);
+    row.append(actionStack);
 
-    ui.mixerGrid.append(strip);
+    ui.mixerGrid.append(row);
   });
 }
 

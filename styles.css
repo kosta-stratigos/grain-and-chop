@@ -264,6 +264,13 @@ h2 {
   margin-bottom: 10px;
 }
 
+.mixer-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 32px;
+  gap: 8px;
+  align-items: stretch;
+}
+
 .mixer-strip {
   display: grid;
   gap: 4px;
@@ -287,15 +294,16 @@ h2 {
 
 .mixer-controls {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 34px;
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
-  align-items: stretch;
+  align-items: center;
 }
 
 .mixer-action-stack {
   display: grid;
   grid-template-rows: repeat(2, minmax(0, 1fr));
   gap: 4px;
+  height: 100%;
 }
 
 .mixer-mini {
@@ -305,6 +313,7 @@ h2 {
   border-radius: var(--pane-radius);
   font-size: 0.68rem;
   line-height: 1;
+  height: 100%;
 }
 
 .mixer-mini.active {
