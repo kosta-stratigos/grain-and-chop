@@ -63,6 +63,8 @@ const ui = {
   driftOverlayClose: document.querySelector("#drift-overlay-close"),
   driftRate: document.querySelector("#drift-rate"),
   driftRateValue: document.querySelector("#drift-rate-value"),
+  driftRateMin: document.querySelector("#drift-rate-min"),
+  driftRateMax: document.querySelector("#drift-rate-max"),
   driftDepth: document.querySelector("#drift-depth"),
   driftDepthValue: document.querySelector("#drift-depth-value"),
   swellOverlay: document.querySelector("#swell-overlay"),
@@ -70,6 +72,8 @@ const ui = {
   swellOverlayClose: document.querySelector("#swell-overlay-close"),
   swellRate: document.querySelector("#swell-rate"),
   swellRateValue: document.querySelector("#swell-rate-value"),
+  swellRateMin: document.querySelector("#swell-rate-min"),
+  swellRateMax: document.querySelector("#swell-rate-max"),
   swellDepth: document.querySelector("#swell-depth"),
   swellDepthValue: document.querySelector("#swell-depth-value"),
   bpm: document.querySelector("#bpm"),
@@ -137,8 +141,19 @@ function clampPan(value) {
   return Math.max(-1, Math.min(1, Number(value) || 0));
 }
 
-function clampLfoRateMs(value) {
-  return Math.max(5, Math.min(10000, Number(value) || 1500));
+function clampIntegerText(value, fallback = 0) {
+  const parsed = Number.parseInt(String(value ?? "").replace(/[^\d-]/g, ""), 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function normalizeRateBounds(minRate, maxRate, fallbackMin = 5, fallbackMax = 10000) {
+  const safeMin = Math.max(1, clampIntegerText(minRate, fallbackMin));
+  const safeMax = Math.max(safeMin, clampIntegerText(maxRate, fallbackMax));
+  return { minRate: safeMin, maxRate: safeMax };
+}
+
+function clampLfoRateMs(value, minRate = 5, maxRate = 10000, fallback = 1500) {
+  return Math.max(minRate, Math.min(maxRate, Number(value) || fallback));
 }
 
 function clampUnitPercent(value, fallback = 0) {
@@ -170,6 +185,8 @@ function createDefaultDriftSettings() {
   return {
     enabled: false,
     rate: 1500,
+    minRate: 5,
+    maxRate: 10000,
     depth: 35,
   };
 }
@@ -178,6 +195,8 @@ function createDefaultSwellSettings() {
   return {
     enabled: false,
     rate: 1800,
+    minRate: 5,
+    maxRate: 10000,
     depth: 30,
   };
 }
@@ -203,17 +222,23 @@ function normalizeDelaySettings(source = {}, fallback = createDefaultDelaySettin
 }
 
 function normalizeDriftSettings(source = {}, fallback = createDefaultDriftSettings()) {
+  const bounds = normalizeRateBounds(source.minRate ?? fallback.minRate, source.maxRate ?? fallback.maxRate, fallback.minRate, fallback.maxRate);
   return {
     enabled: Boolean(source.enabled),
-    rate: clampLfoRateMs(source.rate ?? fallback.rate),
+    minRate: bounds.minRate,
+    maxRate: bounds.maxRate,
+    rate: clampLfoRateMs(source.rate ?? fallback.rate, bounds.minRate, bounds.maxRate, fallback.rate),
     depth: clampUnitPercent(source.depth ?? fallback.depth, fallback.depth),
   };
 }
 
 function normalizeSwellSettings(source = {}, fallback = createDefaultSwellSettings()) {
+  const bounds = normalizeRateBounds(source.minRate ?? fallback.minRate, source.maxRate ?? fallback.maxRate, fallback.minRate, fallback.maxRate);
   return {
     enabled: Boolean(source.enabled),
-    rate: clampLfoRateMs(source.rate ?? fallback.rate),
+    minRate: bounds.minRate,
+    maxRate: bounds.maxRate,
+    rate: clampLfoRateMs(source.rate ?? fallback.rate, bounds.minRate, bounds.maxRate, fallback.rate),
     depth: clampUnitPercent(source.depth ?? fallback.depth, fallback.depth),
   };
 }
@@ -381,8 +406,8 @@ class PlaybackLayer {
     const baseVolume = Math.max(0, Math.min(1, track.volume));
     const driftAmplitude = drift.enabled ? (clampUnitPercent(drift.depth, 0) / 100) * Math.max(0, 1 - Math.abs(basePan)) : 0;
     const swellAmplitude = swell.enabled ? (clampUnitPercent(swell.depth, 0) / 100) * Math.max(0, Math.min(baseVolume, 1 - baseVolume)) : 0;
-    const driftFrequency = 1 / (clampLfoRateMs(drift.rate) / 1000);
-    const swellFrequency = 1 / (clampLfoRateMs(swell.rate) / 1000);
+    const driftFrequency = 1 / (clampLfoRateMs(drift.rate, drift.minRate, drift.maxRate, 1500) / 1000);
+    const swellFrequency = 1 / (clampLfoRateMs(swell.rate, swell.minRate, swell.maxRate, 1800) / 1000);
 
     outputGain.gain.value = 0;
     panNode.pan.value = 0;
@@ -1078,8 +1103,12 @@ function getTrackModulationValues(track, timeSeconds = 0) {
   const baseVolume = Math.max(0, Math.min(1, track.volume));
   const driftAmplitude = drift.enabled ? (clampUnitPercent(drift.depth, 0) / 100) * Math.max(0, 1 - Math.abs(basePan)) : 0;
   const swellAmplitude = swell.enabled ? (clampUnitPercent(swell.depth, 0) / 100) * Math.max(0, Math.min(baseVolume, 1 - baseVolume)) : 0;
-  const driftPhase = drift.enabled ? Math.sin((timeSeconds / Math.max(0.001, clampLfoRateMs(drift.rate) / 1000)) * Math.PI * 2) : 0;
-  const swellPhase = swell.enabled ? Math.sin((timeSeconds / Math.max(0.001, clampLfoRateMs(swell.rate) / 1000)) * Math.PI * 2) : 0;
+  const driftPhase = drift.enabled
+    ? Math.sin((timeSeconds / Math.max(0.001, clampLfoRateMs(drift.rate, drift.minRate, drift.maxRate, 1500) / 1000)) * Math.PI * 2)
+    : 0;
+  const swellPhase = swell.enabled
+    ? Math.sin((timeSeconds / Math.max(0.001, clampLfoRateMs(swell.rate, swell.minRate, swell.maxRate, 1800) / 1000)) * Math.PI * 2)
+    : 0;
 
   return {
     pan: clampPan(basePan + driftPhase * driftAmplitude),
@@ -1095,20 +1124,35 @@ function paintMixerModulation() {
     const trackIndex = Number(strip.dataset.trackIndex);
     const track = state.tracks[trackIndex];
     if (!track) return;
+    const previousVolume = Number(strip.dataset.displayVolume);
+    const previousPan = Number(strip.dataset.displayPan);
     const modulation = transportRunning
       ? getTrackModulationValues(track, timeSeconds)
-      : { pan: clampPan(track.pan), volume: Math.max(0, Math.min(1, track.volume)) };
+      : {
+        pan: Number.isFinite(previousPan) ? previousPan : clampPan(track.pan),
+        volume: Number.isFinite(previousVolume) ? previousVolume : Math.max(0, Math.min(1, track.volume)),
+      };
+    strip.dataset.displayVolume = String(modulation.volume);
+    strip.dataset.displayPan = String(modulation.pan);
 
     const volumeSlider = strip.querySelector('[data-mixer-role="volume"]');
     if (volumeSlider instanceof HTMLInputElement && document.activeElement !== volumeSlider) {
       volumeSlider.value = String(Math.round(modulation.volume * 100));
       updateRangeFill(volumeSlider);
     }
+    const volumeValue = strip.querySelector('[data-mixer-value="volume"]');
+    if (volumeValue instanceof HTMLElement) {
+      volumeValue.textContent = `${Math.round(modulation.volume * 100)}%`;
+    }
 
     const panSlider = strip.querySelector('[data-mixer-role="pan"]');
     if (panSlider instanceof HTMLInputElement && document.activeElement !== panSlider) {
       panSlider.value = String(Math.round(modulation.pan * 100));
       updateRangeFill(panSlider);
+    }
+    const panValue = strip.querySelector('[data-mixer-value="pan"]');
+    if (panValue instanceof HTMLElement) {
+      panValue.textContent = formatPanValue(modulation.pan);
     }
   });
 }
@@ -1349,6 +1393,10 @@ function syncDriftOverlay() {
   if (ui.driftOverlayTrack) {
     ui.driftOverlayTrack.textContent = `${track.name} • Drift ${drift.enabled ? "enabled" : "disabled"}`;
   }
+  ui.driftRateMin.value = String(drift.minRate);
+  ui.driftRateMax.value = String(drift.maxRate);
+  ui.driftRate.min = String(drift.minRate);
+  ui.driftRate.max = String(drift.maxRate);
   ui.driftRate.value = String(drift.rate);
   ui.driftRateValue.textContent = formatLfoRate(drift.rate);
   ui.driftDepth.value = String(drift.depth);
@@ -1367,6 +1415,10 @@ function syncSwellOverlay() {
   if (ui.swellOverlayTrack) {
     ui.swellOverlayTrack.textContent = `${track.name} • Swell ${swell.enabled ? "enabled" : "disabled"}`;
   }
+  ui.swellRateMin.value = String(swell.minRate);
+  ui.swellRateMax.value = String(swell.maxRate);
+  ui.swellRate.min = String(swell.minRate);
+  ui.swellRate.max = String(swell.maxRate);
   ui.swellRate.value = String(swell.rate);
   ui.swellRateValue.textContent = formatLfoRate(swell.rate);
   ui.swellDepth.value = String(swell.depth);
@@ -1948,6 +2000,7 @@ function renderMixer() {
 
     const volumeValue = document.createElement("span");
     volumeValue.className = "mixer-control-value";
+    volumeValue.dataset.mixerValue = "volume";
     volumeValue.textContent = `${Math.round(track.volume * 100)}%`;
     volumeRow.append(volumeValue);
     controls.append(volumeRow);
@@ -1978,6 +2031,7 @@ function renderMixer() {
 
     const panValue = document.createElement("span");
     panValue.className = "mixer-control-value";
+    panValue.dataset.mixerValue = "pan";
     panValue.textContent = formatPanValue(track.pan);
     panRow.append(panValue);
     controls.append(panRow);
@@ -2287,6 +2341,27 @@ function updateTrackSwell(trackIndex, patch) {
   writeStoredSession();
 }
 
+function updateTrackRateBounds(trackIndex, effectKey, minRateValue, maxRateValue) {
+  const track = state.tracks[trackIndex];
+  if (!track) return;
+  const effect = track.effects[effectKey];
+  if (!effect) return;
+  track.effects[effectKey] = effectKey === "drift"
+    ? normalizeDriftSettings({ ...effect, minRate: minRateValue, maxRate: maxRateValue }, effect)
+    : normalizeSwellSettings({ ...effect, minRate: minRateValue, maxRate: maxRateValue }, effect);
+  state.playback?.updateTrackBus(trackIndex, track);
+  syncUi();
+  renderEffectsMatrix();
+  writeStoredSession();
+}
+
+function sanitizeIntegerField(input, fallback) {
+  if (!(input instanceof HTMLInputElement)) return fallback;
+  const value = Math.max(1, clampIntegerText(input.value, fallback));
+  input.value = String(value);
+  return value;
+}
+
 if (ui.audioToggle) {
   ui.audioToggle.addEventListener("click", async () => {
     try {
@@ -2431,6 +2506,16 @@ ui.delayOverlay.addEventListener("click", (event) => {
 ui.driftRate.addEventListener("input", () => {
   updateTrackDrift(state.driftOverlay.trackIndex, { rate: Number(ui.driftRate.value) });
 });
+ui.driftRateMin.addEventListener("change", () => {
+  const minRate = sanitizeIntegerField(ui.driftRateMin, getTrackDrift(state.driftOverlay.trackIndex).minRate);
+  const maxRate = sanitizeIntegerField(ui.driftRateMax, getTrackDrift(state.driftOverlay.trackIndex).maxRate);
+  updateTrackRateBounds(state.driftOverlay.trackIndex, "drift", minRate, maxRate);
+});
+ui.driftRateMax.addEventListener("change", () => {
+  const minRate = sanitizeIntegerField(ui.driftRateMin, getTrackDrift(state.driftOverlay.trackIndex).minRate);
+  const maxRate = sanitizeIntegerField(ui.driftRateMax, getTrackDrift(state.driftOverlay.trackIndex).maxRate);
+  updateTrackRateBounds(state.driftOverlay.trackIndex, "drift", minRate, maxRate);
+});
 ui.driftDepth.addEventListener("input", () => {
   updateTrackDrift(state.driftOverlay.trackIndex, { depth: Number(ui.driftDepth.value) });
 });
@@ -2441,6 +2526,16 @@ ui.driftOverlay.addEventListener("click", (event) => {
 });
 ui.swellRate.addEventListener("input", () => {
   updateTrackSwell(state.swellOverlay.trackIndex, { rate: Number(ui.swellRate.value) });
+});
+ui.swellRateMin.addEventListener("change", () => {
+  const minRate = sanitizeIntegerField(ui.swellRateMin, getTrackSwell(state.swellOverlay.trackIndex).minRate);
+  const maxRate = sanitizeIntegerField(ui.swellRateMax, getTrackSwell(state.swellOverlay.trackIndex).maxRate);
+  updateTrackRateBounds(state.swellOverlay.trackIndex, "swell", minRate, maxRate);
+});
+ui.swellRateMax.addEventListener("change", () => {
+  const minRate = sanitizeIntegerField(ui.swellRateMin, getTrackSwell(state.swellOverlay.trackIndex).minRate);
+  const maxRate = sanitizeIntegerField(ui.swellRateMax, getTrackSwell(state.swellOverlay.trackIndex).maxRate);
+  updateTrackRateBounds(state.swellOverlay.trackIndex, "swell", minRate, maxRate);
 });
 ui.swellDepth.addEventListener("input", () => {
   updateTrackSwell(state.swellOverlay.trackIndex, { depth: Number(ui.swellDepth.value) });

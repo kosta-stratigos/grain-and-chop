@@ -726,6 +726,12 @@ input[type="range"]::-moz-range-thumb {
   gap: 14px;
 }
 
+.overlay-range-inputs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
 .sample-browser-sections {
   display: grid;
   gap: 12px;
