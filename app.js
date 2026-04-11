@@ -2280,7 +2280,6 @@ function renderEffectsMatrix() {
 function renderPattern(activeStep = -1) {
   ui.patternGrid.innerHTML = "";
   state.tracks.forEach((track, trackIndex) => {
-    const playbackTrack = getTrackPlaybackSettings(track);
     const visibleCellCount = getTrackVisibleCellCount(track);
     const row = document.createElement("div");
     row.className = "pattern-row";
@@ -2289,7 +2288,7 @@ function renderPattern(activeStep = -1) {
     const label = document.createElement("button");
     label.className = `pattern-row-label${trackIndex === state.selectedTrackIndex ? " active" : ""}`;
     applyTrackColor(label, track.color);
-    label.innerHTML = `<span class="pattern-row-name">${formatTrackName(track, trackIndex)}</span><span class="pattern-row-mode">${track.stepCount} steps • ${track.playbackMode} • ${formatVoiceName(getTrackVoice(track), track.voiceIndex)} • ${formatModeLabel(playbackTrack.mode)}${track.muted ? " • M" : track.solo ? " • S" : ""}</span>`;
+    label.innerHTML = `<span class="pattern-row-name">${formatTrackName(track, trackIndex)}</span>`;
     label.addEventListener("click", () => {
       state.selectedTrackIndex = trackIndex;
       syncUi();

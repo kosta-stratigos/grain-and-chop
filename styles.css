@@ -936,9 +936,8 @@ input[type="range"]::-moz-range-thumb {
 
 .pattern-row-label {
   display: grid;
-  gap: 2px;
   min-height: 46px;
-  align-content: center;
+  align-items: center;
   padding: 0 10px;
   border-radius: var(--pane-radius);
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -957,11 +956,6 @@ input[type="range"]::-moz-range-thumb {
   font-family: var(--font-display);
   letter-spacing: 0.04em;
   text-transform: uppercase;
-}
-
-.pattern-row-mode {
-  color: var(--muted);
-  font-size: 0.68rem;
 }
 
 .pattern-rate-control {
