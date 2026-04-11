@@ -860,7 +860,7 @@ input[type="range"]::-moz-range-thumb {
 
 .pattern-head-actions {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: flex-end;
   gap: 8px;
   flex-wrap: nowrap;
@@ -878,6 +878,7 @@ input[type="range"]::-moz-range-thumb {
   background: rgba(255, 255, 255, 0.03);
   color: var(--muted);
   font-size: 0.78rem;
+  min-height: 76px;
 }
 
 .fill-pattern-control {

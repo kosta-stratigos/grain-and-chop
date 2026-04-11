@@ -689,7 +689,8 @@ class TransportLayer {
 
   scheduleStep(stepIndex, when) {
     if (!this.state.sample.buffer) return;
-    this.state.tracks.forEach((track, trackIndex) => {
+    this.state.tracks.forEach((track) => {
+      if (!shouldAdvanceTrackStep(track, stepIndex)) return;
       const cellIndex = resolveTrackPatternStep(track, { advance: true });
       if (!track.pattern[cellIndex]) return;
       if (!isTrackAudible(track)) return;
@@ -831,6 +832,7 @@ function createTrackPlaybackState(track = createTrack(1)) {
     patternIndex: track.playbackMode === "reverse" ? Math.max(0, track.stepCount - 1) : 0,
     patternDirection: track.playbackMode === "reverse" ? -1 : 1,
     lastPatternIndex: -1,
+    lastScheduledSlot: -1,
   };
 }
 
@@ -1259,7 +1261,20 @@ function getTrackVisibleCellCount(track) {
 }
 
 function getTrackTriggerDuration(track) {
-  return 60 / state.bpm / 8;
+  return (60 / state.bpm) * 4 / getTrackVisibleCellCount(track);
+}
+
+function getTrackScheduleSlot(track, baseStep) {
+  return Math.floor((baseStep * getTrackVisibleCellCount(track)) / BASE_GRID_STEPS);
+}
+
+function shouldAdvanceTrackStep(track, baseStep) {
+  const playbackState = state.trackPlaybackState[track.id - 1] ?? createTrackPlaybackState(track);
+  const slot = getTrackScheduleSlot(track, baseStep);
+  if (slot === playbackState.lastScheduledSlot) return false;
+  playbackState.lastScheduledSlot = slot;
+  state.trackPlaybackState[track.id - 1] = playbackState;
+  return true;
 }
 
 function resolveTrackPatternStep(track, { advance = false } = {}) {
