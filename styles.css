@@ -881,6 +881,11 @@ input[type="range"]::-moz-range-thumb {
   min-height: 76px;
 }
 
+.pattern-rate-control.is-track-active {
+  border-color: var(--track-color-strong);
+  background: var(--track-color-soft);
+}
+
 .fill-pattern-control {
   display: grid;
   grid-template-columns: minmax(120px, 1fr) auto;

@@ -2359,6 +2359,16 @@ function syncUi() {
   ui.mixVolume.value = String(Math.round(state.mixVolume * 100));
   ui.mixVolumeValue.textContent = `${Math.round(state.mixVolume * 100)}%`;
   ui.fillDensityValue.textContent = `${state.fillDensity}%`;
+  [
+    ui.patternVoiceSelect?.closest(".pattern-rate-control"),
+    ui.trackSteps?.closest(".pattern-rate-control"),
+    ui.trackPlaybackMode?.closest(".pattern-rate-control"),
+    ui.trackStepProbability?.closest(".pattern-rate-control"),
+  ].forEach((control) => {
+    if (!(control instanceof HTMLElement)) return;
+    control.classList.add("is-track-active");
+    applyTrackColor(control, track.color);
+  });
   syncTransportButton();
   syncFilterOverlay();
   syncDelayOverlay();
