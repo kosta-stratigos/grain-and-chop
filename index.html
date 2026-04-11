@@ -229,15 +229,20 @@
               </label>
               <label class="pattern-rate-control">
                 <span class="pattern-steps-meta">
-                  <span>Track Rate</span>
+                  <span>Steps</span>
+                  <span id="track-steps-value" class="pattern-steps-value">16</span>
                 </span>
-                <select id="track-rate">
-                  <option value="1/1">1/1</option>
-                  <option value="1/2">1/2</option>
-                  <option value="1/4">1/4</option>
-                  <option value="1/8">1/8</option>
-                  <option value="1/16">1/16</option>
-                  <option value="1/32">1/32</option>
+                <input id="track-steps" type="range" min="1" max="32" value="16" />
+              </label>
+              <label class="pattern-rate-control">
+                <span class="pattern-steps-meta">
+                  <span>Playback Mode</span>
+                </span>
+                <select id="track-playback-mode">
+                  <option value="forward">Forward</option>
+                  <option value="ping-pong">Ping Pong</option>
+                  <option value="random">Random</option>
+                  <option value="reverse">Reverse</option>
                 </select>
               </label>
             </div>

@@ -80,7 +80,9 @@ const ui = {
   bpmValue: document.querySelector("#bpm-value"),
   swing: document.querySelector("#swing"),
   swingValue: document.querySelector("#swing-value"),
-  trackRate: document.querySelector("#track-rate"),
+  trackSteps: document.querySelector("#track-steps"),
+  trackStepsValue: document.querySelector("#track-steps-value"),
+  trackPlaybackMode: document.querySelector("#track-playback-mode"),
   transportToggle: document.querySelector("#transport-toggle"),
   mixVolume: document.querySelector("#mix-volume"),
   mixVolumeValue: document.querySelector("#mix-volume-value"),
@@ -100,10 +102,9 @@ const BASE_GRID_STEPS = 32;
 const MAX_PATTERN_CELLS = 32;
 const TRACK_COUNT = 4;
 const TRACK_COLORS = ["#59d0ff", "#ff8f5a", "#8dff7a", "#ffd34d"];
-const TRACK_RATE_SPANS = { "1/1": 32, "1/2": 16, "1/4": 8, "1/8": 4, "1/16": 2, "1/32": 1 };
-const TRACK_RATE_VALUES = Object.keys(TRACK_RATE_SPANS);
 const EFFECT_KEYS = ["filter", "delay", "drift", "swell"];
 const FILTER_TYPES = ["lowpass", "bandpass", "highpass"];
+const TRACK_PLAYBACK_MODES = ["forward", "ping-pong", "random", "reverse"];
 
 function updateRangeFill(input) {
   if (!(input instanceof HTMLInputElement) || input.type !== "range") return;
@@ -687,12 +688,9 @@ class TransportLayer {
   }
 
   scheduleStep(stepIndex, when) {
-    if (this.onStep) this.onStep(stepIndex);
     if (!this.state.sample.buffer) return;
-    this.state.tracks.forEach((track) => {
-      const rateSpan = getTrackRateSpan(track);
-      if (stepIndex % rateSpan !== 0) return;
-      const cellIndex = getTrackCellIndexAtBaseStep(track, stepIndex);
+    this.state.tracks.forEach((track, trackIndex) => {
+      const cellIndex = resolveTrackPatternStep(track, { advance: true });
       if (!track.pattern[cellIndex]) return;
       if (!isTrackAudible(track)) return;
       const sliceIndex = resolvePlaybackSliceIndex(track, { advance: true });
@@ -700,6 +698,7 @@ class TransportLayer {
       indicateTrackPlayback(track, sliceIndex);
       this.playbackLayer.triggerTrack(track, when, sliceIndex, noteDuration);
     });
+    if (this.onStep) this.onStep(stepIndex);
   }
 
   advance() {
@@ -739,7 +738,8 @@ function createTrack(id) {
     volume: 0.85,
     pan: 0,
     effects: createTrackEffects(),
-    rate: "1/16",
+    stepCount: 16,
+    playbackMode: "forward",
     pattern: Array.from({ length: MAX_PATTERN_CELLS }, (_, index) => (index + id - 1) % 4 === 0),
   };
 }
@@ -775,7 +775,7 @@ const state = {
   selectedVoiceIndex: 0,
   tracks: Array.from({ length: TRACK_COUNT }, (_, index) => createTrack(index + 1)),
   voices: Array.from({ length: TRACK_COUNT }, (_, index) => createVoiceConfig(index + 1)),
-  trackPlaybackState: Array.from({ length: TRACK_COUNT }, () => ({ sequentialIndex: 0, sweepIndex: 0, sweepDirection: 1 })),
+  trackPlaybackState: Array.from({ length: TRACK_COUNT }, (_, index) => createTrackPlaybackState(createTrack(index + 1))),
   trackIndicators: Array.from({ length: TRACK_COUNT }, () => null),
   sampleBrowserOpen: false,
   overviewDrag: {
@@ -823,6 +823,17 @@ function getSelectedVoice() {
   return state.voices[state.selectedVoiceIndex];
 }
 
+function createTrackPlaybackState(track = createTrack(1)) {
+  return {
+    sequentialIndex: 0,
+    sweepIndex: 0,
+    sweepDirection: 1,
+    patternIndex: track.playbackMode === "reverse" ? Math.max(0, track.stepCount - 1) : 0,
+    patternDirection: track.playbackMode === "reverse" ? -1 : 1,
+    lastPatternIndex: -1,
+  };
+}
+
 function readStoredSession() {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
@@ -834,12 +845,12 @@ function readStoredSession() {
 
 function resetTrackPlaybackState(trackIndex = null) {
   if (Number.isInteger(trackIndex)) {
-    state.trackPlaybackState[trackIndex] = { sequentialIndex: 0, sweepIndex: 0, sweepDirection: 1 };
+    state.trackPlaybackState[trackIndex] = createTrackPlaybackState(state.tracks[trackIndex]);
     drawWaveformOverview();
     return;
   }
 
-  state.trackPlaybackState = Array.from({ length: TRACK_COUNT }, () => ({ sequentialIndex: 0, sweepIndex: 0, sweepDirection: 1 }));
+  state.trackPlaybackState = state.tracks.map((track) => createTrackPlaybackState(track));
 }
 
 function normalizeTrack(index, source = {}) {
@@ -859,7 +870,8 @@ function normalizeTrack(index, source = {}) {
       drift: normalizeDriftSettings(source.effects?.drift ?? source.drift ?? fallback.effects.drift, fallback.effects.drift),
       swell: normalizeSwellSettings(source.effects?.swell ?? source.swell ?? fallback.effects.swell, fallback.effects.swell),
     },
-    rate: TRACK_RATE_VALUES.includes(source.rate) ? source.rate : fallback.rate,
+    stepCount: Math.max(1, Math.min(32, Number(source.stepCount) || fallback.stepCount)),
+    playbackMode: TRACK_PLAYBACK_MODES.includes(source.playbackMode) ? source.playbackMode : fallback.playbackMode,
     pattern: Array.from({ length: MAX_PATTERN_CELLS }, (_, step) => Boolean(source.pattern?.[step] ?? fallback.pattern[step])),
   };
 }
@@ -925,7 +937,8 @@ function writeStoredSession() {
         drift: { ...track.effects.drift },
         swell: { ...track.effects.swell },
       },
-      rate: track.rate,
+      stepCount: track.stepCount,
+      playbackMode: track.playbackMode,
       pattern: track.pattern.slice(0, MAX_PATTERN_CELLS),
     })),
   };
@@ -973,7 +986,8 @@ function applyStoredSession() {
   } else {
     const legacyTrack = normalizeTrack(0, {
       voiceIndex: 0,
-      rate: stored.controls?.rate,
+      stepCount: 16,
+      playbackMode: "forward",
       pattern: stored.pattern,
     });
     state.voices = [
@@ -1240,20 +1254,45 @@ function formatFilterQ(value) {
   return clampFilterQ(value).toFixed(1);
 }
 
-function getTrackRateSpan(track) {
-  return TRACK_RATE_SPANS[track.rate] ?? TRACK_RATE_SPANS["1/16"];
-}
-
 function getTrackVisibleCellCount(track) {
-  return Math.max(1, BASE_GRID_STEPS / getTrackRateSpan(track));
-}
-
-function getTrackCellIndexAtBaseStep(track, baseStep) {
-  return Math.floor(baseStep / getTrackRateSpan(track));
+  return Math.max(1, Math.min(MAX_PATTERN_CELLS, track.stepCount ?? 16));
 }
 
 function getTrackTriggerDuration(track) {
-  return getTrackRateSpan(track) * (60 / state.bpm / 8);
+  return 60 / state.bpm / 8;
+}
+
+function resolveTrackPatternStep(track, { advance = false } = {}) {
+  const stepCount = getTrackVisibleCellCount(track);
+  const playbackState = state.trackPlaybackState[track.id - 1] ?? createTrackPlaybackState(track);
+  let index = 0;
+
+  if (track.playbackMode === "random") {
+    index = Math.floor(Math.random() * stepCount);
+    if (advance) playbackState.lastPatternIndex = index;
+    state.trackPlaybackState[track.id - 1] = playbackState;
+    return index;
+  }
+
+  index = Math.max(0, Math.min(stepCount - 1, playbackState.patternIndex));
+  if (advance) {
+    playbackState.lastPatternIndex = index;
+    if (track.playbackMode === "reverse") {
+      playbackState.patternIndex = index > 0 ? index - 1 : stepCount - 1;
+    } else if (track.playbackMode === "ping-pong" && stepCount > 1) {
+      const nextIndex = index + playbackState.patternDirection;
+      if (nextIndex >= stepCount || nextIndex < 0) {
+        playbackState.patternDirection *= -1;
+        playbackState.patternIndex = index + playbackState.patternDirection;
+      } else {
+        playbackState.patternIndex = nextIndex;
+      }
+    } else {
+      playbackState.patternIndex = (index + 1) % stepCount;
+    }
+  }
+  state.trackPlaybackState[track.id - 1] = playbackState;
+  return index;
 }
 
 function resolvePlaybackSliceIndex(track, { advance = false } = {}) {
@@ -1962,9 +2001,14 @@ function drawWaveform() {
 
 function updateCurrentStep(activeStep = -1) {
   ui.patternGrid.querySelectorAll(".step").forEach((button) => {
-    const stepStart = Number(button.dataset.stepStart);
-    const stepSpan = Number(button.dataset.stepSpan);
-    button.classList.toggle("current", activeStep >= stepStart && activeStep < stepStart + stepSpan);
+    if (activeStep < 0) {
+      button.classList.remove("current");
+      return;
+    }
+    const trackIndex = Number(button.dataset.trackIndex);
+    const cellIndex = Number(button.dataset.cellIndex);
+    const currentIndex = state.trackPlaybackState[trackIndex]?.lastPatternIndex ?? -1;
+    button.classList.toggle("current", cellIndex === currentIndex);
   });
 }
 
@@ -2224,7 +2268,7 @@ function renderPattern(activeStep = -1) {
     const label = document.createElement("button");
     label.className = `pattern-row-label${trackIndex === state.selectedTrackIndex ? " active" : ""}`;
     applyTrackColor(label, track.color);
-    label.innerHTML = `<span class="pattern-row-name">${formatTrackName(track, trackIndex)}</span><span class="pattern-row-mode">${track.rate} • ${formatVoiceName(getTrackVoice(track), track.voiceIndex)} • ${formatModeLabel(playbackTrack.mode)}${track.muted ? " • M" : track.solo ? " • S" : ""}</span>`;
+    label.innerHTML = `<span class="pattern-row-name">${formatTrackName(track, trackIndex)}</span><span class="pattern-row-mode">${track.stepCount} steps • ${track.playbackMode} • ${formatVoiceName(getTrackVoice(track), track.voiceIndex)} • ${formatModeLabel(playbackTrack.mode)}${track.muted ? " • M" : track.solo ? " • S" : ""}</span>`;
     label.addEventListener("click", () => {
       state.selectedTrackIndex = trackIndex;
       syncUi();
@@ -2239,12 +2283,10 @@ function renderPattern(activeStep = -1) {
 
     track.pattern.slice(0, visibleCellCount).forEach((enabled, cellIndex) => {
       const stepButton = document.createElement("button");
-      const stepStart = cellIndex * getTrackRateSpan(track);
       stepButton.className = `step${enabled ? " active" : ""}`;
       applyTrackColor(stepButton, track.color);
-      stepButton.dataset.stepStart = String(stepStart);
-      stepButton.dataset.stepSpan = String(getTrackRateSpan(track));
       stepButton.dataset.trackIndex = String(trackIndex);
+      stepButton.dataset.cellIndex = String(cellIndex);
       stepButton.textContent = String(cellIndex + 1);
       stepButton.addEventListener("click", () => {
         track.pattern[cellIndex] = !track.pattern[cellIndex];
@@ -2286,7 +2328,9 @@ function syncUi() {
   ui.bpmValue.textContent = String(state.bpm);
   ui.swing.value = String(state.swing);
   ui.swingValue.textContent = `${state.swing}%`;
-  ui.trackRate.value = track.rate;
+  ui.trackSteps.value = String(track.stepCount);
+  ui.trackStepsValue.textContent = String(track.stepCount);
+  ui.trackPlaybackMode.value = track.playbackMode;
   ui.patternVoiceSelect.value = String(track.voiceIndex);
   ui.fillDensity.value = String(state.fillDensity);
   ui.mixVolume.value = String(Math.round(state.mixVolume * 100));
@@ -2309,7 +2353,7 @@ function syncUi() {
 
 function updateSelectedTrack(patch) {
   Object.assign(getSelectedTrack(), patch);
-  if ("rate" in patch || "voiceIndex" in patch) resetTrackPlaybackState(state.selectedTrackIndex);
+  if ("stepCount" in patch || "playbackMode" in patch || "voiceIndex" in patch) resetTrackPlaybackState(state.selectedTrackIndex);
   state.playback?.updateTrackBus(state.selectedTrackIndex, getSelectedTrack());
   syncUi();
   renderTrackSelector();
@@ -2456,7 +2500,8 @@ ui.mode.addEventListener("change", () => updateSelectedVoice({ mode: ui.mode.val
 ui.grainLocation.addEventListener("change", () => updateSelectedVoice({ grainLocation: ui.grainLocation.value }));
 ui.voicePlacement.addEventListener("input", () => updateSelectedVoice({ voicePlacement: Number(ui.voicePlacement.value) }));
 ui.voicePlaybackMode.addEventListener("change", () => updateSelectedVoice({ voicePlaybackMode: ui.voicePlaybackMode.value }));
-ui.trackRate.addEventListener("change", () => updateSelectedTrack({ rate: ui.trackRate.value }));
+ui.trackSteps.addEventListener("input", () => updateSelectedTrack({ stepCount: Number(ui.trackSteps.value) }));
+ui.trackPlaybackMode.addEventListener("change", () => updateSelectedTrack({ playbackMode: ui.trackPlaybackMode.value }));
 ui.patternVoiceSelect.addEventListener("change", () => {
   updateSelectedTrack({ voiceIndex: Number(ui.patternVoiceSelect.value) });
 });
