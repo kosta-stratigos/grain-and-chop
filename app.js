@@ -83,6 +83,8 @@ const ui = {
   trackSteps: document.querySelector("#track-steps"),
   trackStepsValue: document.querySelector("#track-steps-value"),
   trackPlaybackMode: document.querySelector("#track-playback-mode"),
+  trackStepProbability: document.querySelector("#track-step-probability"),
+  trackStepProbabilityValue: document.querySelector("#track-step-probability-value"),
   transportToggle: document.querySelector("#transport-toggle"),
   mixVolume: document.querySelector("#mix-volume"),
   mixVolumeValue: document.querySelector("#mix-volume-value"),
@@ -693,6 +695,7 @@ class TransportLayer {
       if (!shouldAdvanceTrackStep(track, stepIndex)) return;
       const cellIndex = resolveTrackPatternStep(track, { advance: true });
       if (!track.pattern[cellIndex]) return;
+      if (Math.random() * 100 > track.stepProbability) return;
       if (!isTrackAudible(track)) return;
       const sliceIndex = resolvePlaybackSliceIndex(track, { advance: true });
       const noteDuration = getTrackTriggerDuration(track);
@@ -741,6 +744,7 @@ function createTrack(id) {
     effects: createTrackEffects(),
     stepCount: 16,
     playbackMode: "forward",
+    stepProbability: 100,
     pattern: Array.from({ length: MAX_PATTERN_CELLS }, (_, index) => (index + id - 1) % 4 === 0),
   };
 }
@@ -874,6 +878,7 @@ function normalizeTrack(index, source = {}) {
     },
     stepCount: Math.max(1, Math.min(32, Number(source.stepCount) || fallback.stepCount)),
     playbackMode: TRACK_PLAYBACK_MODES.includes(source.playbackMode) ? source.playbackMode : fallback.playbackMode,
+    stepProbability: Math.max(0, Math.min(100, Number(source.stepProbability) || fallback.stepProbability)),
     pattern: Array.from({ length: MAX_PATTERN_CELLS }, (_, step) => Boolean(source.pattern?.[step] ?? fallback.pattern[step])),
   };
 }
@@ -941,6 +946,7 @@ function writeStoredSession() {
       },
       stepCount: track.stepCount,
       playbackMode: track.playbackMode,
+      stepProbability: track.stepProbability,
       pattern: track.pattern.slice(0, MAX_PATTERN_CELLS),
     })),
   };
@@ -2346,6 +2352,8 @@ function syncUi() {
   ui.trackSteps.value = String(track.stepCount);
   ui.trackStepsValue.textContent = String(track.stepCount);
   ui.trackPlaybackMode.value = track.playbackMode;
+  ui.trackStepProbability.value = String(track.stepProbability);
+  ui.trackStepProbabilityValue.textContent = `${track.stepProbability}%`;
   ui.patternVoiceSelect.value = String(track.voiceIndex);
   ui.fillDensity.value = String(state.fillDensity);
   ui.mixVolume.value = String(Math.round(state.mixVolume * 100));
@@ -2517,6 +2525,7 @@ ui.voicePlacement.addEventListener("input", () => updateSelectedVoice({ voicePla
 ui.voicePlaybackMode.addEventListener("change", () => updateSelectedVoice({ voicePlaybackMode: ui.voicePlaybackMode.value }));
 ui.trackSteps.addEventListener("input", () => updateSelectedTrack({ stepCount: Number(ui.trackSteps.value) }));
 ui.trackPlaybackMode.addEventListener("change", () => updateSelectedTrack({ playbackMode: ui.trackPlaybackMode.value }));
+ui.trackStepProbability.addEventListener("input", () => updateSelectedTrack({ stepProbability: Number(ui.trackStepProbability.value) }));
 ui.patternVoiceSelect.addEventListener("change", () => {
   updateSelectedTrack({ voiceIndex: Number(ui.patternVoiceSelect.value) });
 });
