@@ -18,7 +18,6 @@ const ui = {
   fillDensity: document.querySelector("#fill-density"),
   fillDensityValue: document.querySelector("#fill-density-value"),
   trackSelector: document.querySelector("#track-selector"),
-  scaleGrid: document.querySelector("#scale-grid"),
   pitchLanes: document.querySelector("#pitch-lanes"),
   patternVoiceSelect: document.querySelector("#pattern-voice-select"),
   mode: document.querySelector("#mode"),
@@ -1163,6 +1162,90 @@ function formatPanSweepValue(value) {
   return `${value < 0 ? "L" : "R"}${Math.abs(value)}`;
 }
 
+function getPanRotation(pan) {
+  return clampPan(pan) * 135;
+}
+
+function setTrackVolumeFromMeter(trackIndex, clientY, meterElement) {
+  if (!(meterElement instanceof HTMLElement)) return;
+  const rect = meterElement.getBoundingClientRect();
+  if (rect.height <= 0) return;
+  const normalized = 1 - Math.max(0, Math.min(1, (clientY - rect.top) / rect.height));
+  const track = state.tracks[trackIndex];
+  if (!track) return;
+  track.volume = normalized;
+  state.playback?.updateTrackBus(trackIndex, track);
+  paintMixerModulation();
+  writeStoredSession();
+}
+
+function bindMixerMeter(meterElement, trackIndex) {
+  if (!(meterElement instanceof HTMLElement)) return;
+  meterElement.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    state.selectedTrackIndex = trackIndex;
+    syncUi();
+    syncMixerSelection();
+    renderTrackSelector();
+    renderEffectsMatrix();
+    renderPattern();
+    renderPitchLanes();
+    writeStoredSession();
+    setTrackVolumeFromMeter(trackIndex, event.clientY, meterElement);
+    meterElement.setPointerCapture(event.pointerId);
+  });
+
+  meterElement.addEventListener("pointermove", (event) => {
+    if (!meterElement.hasPointerCapture(event.pointerId)) return;
+    event.preventDefault();
+    setTrackVolumeFromMeter(trackIndex, event.clientY, meterElement);
+  });
+}
+
+function bindMixerPanKnob(knobElement, trackIndex) {
+  if (!(knobElement instanceof HTMLElement)) return;
+  knobElement.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    const track = state.tracks[trackIndex];
+    if (!track) return;
+    state.selectedTrackIndex = trackIndex;
+    syncUi();
+    syncMixerSelection();
+    renderTrackSelector();
+    renderEffectsMatrix();
+    renderPattern();
+    renderPitchLanes();
+    writeStoredSession();
+
+    const startY = event.clientY;
+    const startPan = clampPan(track.pan);
+    knobElement.setPointerCapture(event.pointerId);
+
+    const handleMove = (moveEvent) => {
+      if (!knobElement.hasPointerCapture(moveEvent.pointerId)) return;
+      moveEvent.preventDefault();
+      const delta = (startY - moveEvent.clientY) / 80;
+      track.pan = clampPan(startPan + delta);
+      state.playback?.updateTrackBus(trackIndex, track);
+      paintMixerModulation();
+      writeStoredSession();
+    };
+
+    const handleEnd = (endEvent) => {
+      if (knobElement.hasPointerCapture(endEvent.pointerId)) {
+        knobElement.releasePointerCapture(endEvent.pointerId);
+      }
+      knobElement.removeEventListener("pointermove", handleMove);
+      knobElement.removeEventListener("pointerup", handleEnd);
+      knobElement.removeEventListener("pointercancel", handleEnd);
+    };
+
+    knobElement.addEventListener("pointermove", handleMove);
+    knobElement.addEventListener("pointerup", handleEnd);
+    knobElement.addEventListener("pointercancel", handleEnd);
+  });
+}
+
 function getMidiPitchClass(midiNote) {
   return ((midiNote % 12) + 12) % 12;
 }
@@ -1212,29 +1295,35 @@ function paintMixerModulation() {
       : {
         pan: Number.isFinite(previousPan) ? previousPan : clampPan(track.pan),
         volume: Number.isFinite(previousVolume) ? previousVolume : Math.max(0, Math.min(1, track.volume)),
-      };
+    };
     strip.dataset.displayVolume = String(modulation.volume);
     strip.dataset.displayPan = String(modulation.pan);
 
-    const volumeSlider = strip.querySelector('[data-mixer-role="volume"]');
-    if (volumeSlider instanceof HTMLInputElement && document.activeElement !== volumeSlider) {
-      volumeSlider.value = String(Math.round(modulation.volume * 100));
-      updateRangeFill(volumeSlider);
+    const meter = strip.querySelector('[data-mixer-role="volume"]');
+    if (meter instanceof HTMLElement) {
+      meter.style.setProperty("--meter-fill", `${Math.round(modulation.volume * 100)}%`);
     }
     const volumeValue = strip.querySelector('[data-mixer-value="volume"]');
     if (volumeValue instanceof HTMLElement) {
       volumeValue.textContent = `${Math.round(modulation.volume * 100)}%`;
     }
 
-    const panSlider = strip.querySelector('[data-mixer-role="pan"]');
-    if (panSlider instanceof HTMLInputElement && document.activeElement !== panSlider) {
-      panSlider.value = String(Math.round(modulation.pan * 100));
-      updateRangeFill(panSlider);
+    const panKnob = strip.querySelector('[data-mixer-role="pan"]');
+    if (panKnob instanceof HTMLElement) {
+      panKnob.style.setProperty("--pan-rotation", `${getPanRotation(modulation.pan)}deg`);
     }
     const panValue = strip.querySelector('[data-mixer-value="pan"]');
     if (panValue instanceof HTMLElement) {
       panValue.textContent = formatPanValue(modulation.pan);
     }
+  });
+}
+
+function syncMixerSelection() {
+  if (!ui.mixerGrid) return;
+  ui.mixerGrid.querySelectorAll(".mixer-strip").forEach((strip) => {
+    const trackIndex = Number(strip.dataset.trackIndex);
+    strip.classList.toggle("active", trackIndex === state.selectedTrackIndex);
   });
 }
 
@@ -1288,40 +1377,6 @@ function renderPatternVoiceOptions() {
   });
 }
 
-function renderScaleGrid() {
-  if (!ui.scaleGrid) return;
-  ui.scaleGrid.innerHTML = "";
-
-  state.tracks.forEach((track, index) => {
-    const row = document.createElement("div");
-    row.className = `scale-row${index === state.selectedTrackIndex ? " active" : ""}`;
-    applyTrackColor(row, track.color);
-
-    const head = document.createElement("div");
-    head.className = "scale-row-head";
-    head.innerHTML = `<span class="scale-row-name">${formatTrackName(track, index)}</span><span class="scale-row-key">Key: D</span>`;
-    row.append(head);
-
-    const select = document.createElement("select");
-    SCALE_OPTIONS.forEach((option) => {
-      const element = document.createElement("option");
-      element.value = option.value;
-      element.textContent = option.label;
-      select.append(element);
-    });
-    select.value = track.scaleMode;
-    select.addEventListener("change", () => {
-      track.scaleMode = normalizeScaleMode(select.value, track.scaleMode);
-      renderScaleGrid();
-      renderPitchLanes();
-      writeStoredSession();
-    });
-    row.append(select);
-
-    ui.scaleGrid.append(row);
-  });
-}
-
 function renderPitchLanes() {
   if (!ui.pitchLanes) return;
   ui.pitchLanes.innerHTML = "";
@@ -1341,7 +1396,6 @@ function renderPitchLanes() {
       renderEffectsMatrix();
       renderMixer();
       renderPattern();
-      renderScaleGrid();
       renderPitchLanes();
       writeStoredSession();
     });
@@ -1372,6 +1426,23 @@ function renderPitchLanes() {
     }
 
     lane.append(keyboard);
+
+    const scaleSelect = document.createElement("select");
+    scaleSelect.className = "pitch-scale-select";
+    SCALE_OPTIONS.forEach((option) => {
+      const element = document.createElement("option");
+      element.value = option.value;
+      element.textContent = option.label;
+      scaleSelect.append(element);
+    });
+    scaleSelect.value = track.scaleMode;
+    scaleSelect.addEventListener("change", () => {
+      track.scaleMode = normalizeScaleMode(scaleSelect.value, track.scaleMode);
+      renderPitchLanes();
+      writeStoredSession();
+    });
+    lane.append(scaleSelect);
+
     ui.pitchLanes.append(lane);
   });
 }
@@ -2212,67 +2283,34 @@ function renderMixer() {
     const controls = document.createElement("div");
     controls.className = "mixer-controls";
 
-    const volumeRow = document.createElement("div");
-    volumeRow.className = "mixer-control-row";
-
-    const volumeLabel = document.createElement("span");
-    volumeLabel.className = "mixer-control-label";
-    volumeLabel.textContent = "Vol";
-    volumeRow.append(volumeLabel);
-
-    const slider = document.createElement("input");
-    slider.type = "range";
-    slider.min = "0";
-    slider.max = "100";
-    slider.value = String(Math.round(track.volume * 100));
-    slider.dataset.mixerRole = "volume";
-    slider.addEventListener("input", () => {
-      track.volume = Number(slider.value) / 100;
-      state.playback?.updateTrackBus(index, track);
-      volumeValue.textContent = `${Math.round(track.volume * 100)}%`;
-      updateRangeFill(slider);
-      writeStoredSession();
-    });
-    updateRangeFill(slider);
-    volumeRow.append(slider);
-
     const volumeValue = document.createElement("span");
-    volumeValue.className = "mixer-control-value";
+    volumeValue.className = "mixer-meter-value";
     volumeValue.dataset.mixerValue = "volume";
     volumeValue.textContent = `${Math.round(track.volume * 100)}%`;
-    volumeRow.append(volumeValue);
-    controls.append(volumeRow);
+    controls.append(volumeValue);
 
-    const panRow = document.createElement("div");
-    panRow.className = "mixer-control-row";
+    const meter = document.createElement("div");
+    meter.className = "mixer-meter";
+    meter.dataset.mixerRole = "volume";
+    meter.style.setProperty("--meter-fill", `${Math.round(track.volume * 100)}%`);
+    meter.innerHTML = '<div class="mixer-meter-fill"></div><div class="mixer-meter-thumb"></div>';
+    bindMixerMeter(meter, index);
+    controls.append(meter);
 
-    const panLabel = document.createElement("span");
-    panLabel.className = "mixer-control-label";
-    panLabel.textContent = "Pan";
-    panRow.append(panLabel);
-
-    const panSlider = document.createElement("input");
-    panSlider.type = "range";
-    panSlider.min = "-100";
-    panSlider.max = "100";
-    panSlider.value = String(Math.round(clampPan(track.pan) * 100));
-    panSlider.dataset.mixerRole = "pan";
-    panSlider.addEventListener("input", () => {
-      track.pan = Number(panSlider.value) / 100;
-      state.playback?.updateTrackBus(index, track);
-      panValue.textContent = formatPanValue(track.pan);
-      updateRangeFill(panSlider);
-      writeStoredSession();
-    });
-    updateRangeFill(panSlider);
-    panRow.append(panSlider);
+    const panKnob = document.createElement("button");
+    panKnob.type = "button";
+    panKnob.className = "mixer-pan-knob";
+    panKnob.dataset.mixerRole = "pan";
+    panKnob.style.setProperty("--pan-rotation", `${getPanRotation(track.pan)}deg`);
+    panKnob.setAttribute("aria-label", `Pan ${formatTrackName(track, index)}`);
+    bindMixerPanKnob(panKnob, index);
+    controls.append(panKnob);
 
     const panValue = document.createElement("span");
-    panValue.className = "mixer-control-value";
+    panValue.className = "mixer-pan-value";
     panValue.dataset.mixerValue = "pan";
     panValue.textContent = formatPanValue(track.pan);
-    panRow.append(panValue);
-    controls.append(panRow);
+    controls.append(panValue);
 
     const actionRow = document.createElement("div");
     actionRow.className = "mixer-action-row";
@@ -2289,6 +2327,7 @@ function renderMixer() {
       renderEffectsMatrix();
       renderMixer();
       renderPattern();
+      renderPitchLanes();
       writeStoredSession();
     });
     actionRow.append(muteButton);
@@ -2305,6 +2344,7 @@ function renderMixer() {
       renderEffectsMatrix();
       renderMixer();
       renderPattern();
+      renderPitchLanes();
       writeStoredSession();
     });
     actionRow.append(soloButton);
@@ -2314,6 +2354,7 @@ function renderMixer() {
     ui.mixerGrid.append(strip);
   });
   paintMixerModulation();
+  syncMixerSelection();
   ensureMixerAnimation();
 }
 
@@ -2506,7 +2547,6 @@ function syncUi() {
     control.classList.add("is-track-active");
     applyTrackColor(control, track.color);
   });
-  renderScaleGrid();
   renderPitchLanes();
   syncTransportButton();
   syncFilterOverlay();
