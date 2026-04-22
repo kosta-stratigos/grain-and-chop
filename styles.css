@@ -628,6 +628,56 @@ h2 {
   gap: 10px;
 }
 
+.voice-type-control,
+.synth-settings-group {
+  margin-bottom: 10px;
+}
+
+.synth-settings-group {
+  grid-column: 1 / -1;
+}
+
+.rotary-row {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 10px;
+  align-items: center;
+  justify-content: start;
+}
+
+.voice-rotary {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  min-height: 34px;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.14), transparent 32%),
+    rgba(255, 255, 255, 0.05);
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.voice-rotary:hover {
+  transform: none;
+}
+
+.voice-rotary::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 5px;
+  width: 2px;
+  height: 10px;
+  margin-left: -1px;
+  border-radius: 999px;
+  background: var(--text);
+  transform-origin: 50% 12px;
+  transform: rotate(var(--rotary-angle, -135deg));
+}
+
 .control-group {
   display: grid;
   gap: 10px;

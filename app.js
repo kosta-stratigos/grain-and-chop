@@ -18,6 +18,9 @@ const ui = {
   fillDensity: document.querySelector("#fill-density"),
   fillDensityValue: document.querySelector("#fill-density-value"),
   trackSelector: document.querySelector("#track-selector"),
+  sampleSettingsGroup: document.querySelector("#sample-settings-group"),
+  voicePlaybackSettingsGroup: document.querySelector("#voice-playback-settings-group"),
+  synthSettingsGroup: document.querySelector("#synth-settings-group"),
   sequenceSettingsGroup: document.querySelector("#sequence-settings-group"),
   pitchLanes: document.querySelector("#pitch-lanes"),
   patternVoiceSelect: document.querySelector("#pattern-voice-select"),
@@ -38,6 +41,15 @@ const ui = {
   chopGate: document.querySelector("#chop-gate"),
   chopGateValue: document.querySelector("#chop-gate-value"),
   reverse: document.querySelector("#reverse"),
+  synthWave: document.querySelector("#synth-wave"),
+  synthTune: document.querySelector("#synth-tune"),
+  synthNoiseMixKnob: document.querySelector("#synth-noise-mix-knob"),
+  synthNoiseMixValue: document.querySelector("#synth-noise-mix-value"),
+  synthFilterType: document.querySelector("#synth-filter-type"),
+  synthFilterFrequency: document.querySelector("#synth-filter-frequency"),
+  synthFilterFrequencyValue: document.querySelector("#synth-filter-frequency-value"),
+  synthFilterQ: document.querySelector("#synth-filter-q"),
+  synthFilterQValue: document.querySelector("#synth-filter-q-value"),
   effectsMatrix: document.querySelector("#effects-matrix"),
   filterOverlay: document.querySelector("#filter-overlay"),
   filterOverlayTrack: document.querySelector("#filter-overlay-track"),
@@ -108,10 +120,12 @@ const TRACK_COUNT = 4;
 const PITCH_LANE_NOTE_COUNT = 48;
 const PITCH_LANE_START_MIDI = 38;
 const PITCH_LANE_REFERENCE_MIDI = 62;
+const SYNTH_TUNE_DEFAULT_MIDI = 38;
 const TRACK_COLORS = ["#59d0ff", "#ff8f5a", "#8dff7a", "#ffd34d"];
 const EFFECT_KEYS = ["filter", "delay", "drift", "swell"];
 const FILTER_TYPES = ["lowpass", "bandpass", "highpass"];
 const TRACK_PLAYBACK_MODES = ["forward", "ping-pong", "random", "reverse"];
+const SYNTH_WAVES = ["sine", "triangle", "sawtooth", "square"];
 const SCALE_OPTIONS = [
   { value: "chromatic", label: "Chromatic", intervals: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] },
   { value: "ionian", label: "Ionian (I)", intervals: [0, 2, 4, 5, 7, 9, 11] },
@@ -183,6 +197,14 @@ function clampPanSweep(value, fallback = 0) {
 
 function clampVolumeSweep(value, fallback = 100) {
   return Math.max(0, Math.min(100, clampIntegerText(value, fallback)));
+}
+
+function clampMidiNote(value, fallback = SYNTH_TUNE_DEFAULT_MIDI) {
+  return Math.max(24, Math.min(84, clampIntegerText(value, fallback)));
+}
+
+function clampNoiseMix(value, fallback = 0) {
+  return Math.max(0, Math.min(100, Number(value) || fallback));
 }
 
 function normalizeScaleMode(value, fallback = "chromatic") {
@@ -282,6 +304,29 @@ function createTrackEffects(source = {}) {
   };
 }
 
+function midiToFrequency(midiNote) {
+  return 440 * (2 ** ((midiNote - 69) / 12));
+}
+
+function formatMidiNote(midiNote) {
+  return `${NOTE_NAMES[((midiNote % 12) + 12) % 12]}${Math.floor(midiNote / 12) - 1}`;
+}
+
+function formatSynthWaveLabel(wave) {
+  if (wave === "sawtooth") return "saw";
+  return wave;
+}
+
+function formatFilterFrequencyValue(value) {
+  const safeValue = clampFilterFrequency(value);
+  return safeValue >= 1000 ? `${(safeValue / 1000).toFixed(2)} kHz` : `${Math.round(safeValue)} Hz`;
+}
+
+function getRotaryAngleFromPercent(value) {
+  const percent = Math.max(0, Math.min(100, Number(value) || 0));
+  return -135 + (percent / 100) * 270;
+}
+
 class SampleLayer {
   constructor() {
     this.buffer = null;
@@ -351,11 +396,22 @@ class PlaybackLayer {
     this.audioContext = audioContext;
     this.sampleLayer = sampleLayer;
     this.state = state;
+    this.noiseBuffer = this.createNoiseBuffer();
     this.output = audioContext.createGain();
     this.output.gain.value = 0.9;
     this.output.connect(audioContext.destination);
     this.trackBuses = Array.from({ length: TRACK_COUNT }, (_, index) => this.createTrackBus(index));
     this.trackBuses.forEach((_, index) => this.updateTrackBus(index, this.state.tracks[index]));
+  }
+
+  createNoiseBuffer() {
+    const length = this.audioContext.sampleRate * 2;
+    const buffer = this.audioContext.createBuffer(1, length, this.audioContext.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let index = 0; index < data.length; index += 1) {
+      data[index] = Math.random() * 2 - 1;
+    }
+    return buffer;
   }
 
   createTrackBus(trackIndex) {
@@ -654,8 +710,78 @@ class PlaybackLayer {
     });
   }
 
+  triggerSynth(settings, when = this.audioContext.currentTime, noteDuration = 0.1) {
+    const frequency = midiToFrequency(settings.tuneMidi);
+    const busInput = this.trackBuses?.[settings.trackIndex]?.input ?? this.output;
+    const oscillator = this.audioContext.createOscillator();
+    const noiseSource = this.audioContext.createBufferSource();
+    const waveGain = this.audioContext.createGain();
+    const noiseGain = this.audioContext.createGain();
+    const filterNode = this.audioContext.createBiquadFilter();
+    const ampGain = this.audioContext.createGain();
+    const release = 0.08;
+    const holdDuration = Math.max(0.05, noteDuration);
+    const noiseMix = clampNoiseMix(settings.noiseMix, 0) / 100;
+    const waveMix = 1 - noiseMix;
+    const stopTime = when + holdDuration + release;
+
+    oscillator.type = SYNTH_WAVES.includes(settings.wave) ? settings.wave : "sine";
+    oscillator.frequency.setValueAtTime(frequency, when);
+    noiseSource.buffer = this.noiseBuffer;
+    noiseSource.loop = true;
+
+    waveGain.gain.setValueAtTime(waveMix * 0.7, when);
+    noiseGain.gain.setValueAtTime(noiseMix * 0.5, when);
+    filterNode.type = FILTER_TYPES.includes(settings.filterType) ? settings.filterType : "lowpass";
+    filterNode.frequency.setValueAtTime(clampFilterFrequency(settings.filterFrequency), when);
+    filterNode.Q.setValueAtTime(clampFilterQ(settings.filterQ), when);
+
+    ampGain.gain.setValueAtTime(0.0001, when);
+    ampGain.gain.linearRampToValueAtTime(0.7, when + 0.01);
+    ampGain.gain.setValueAtTime(0.7, when + holdDuration);
+    ampGain.gain.linearRampToValueAtTime(0.0001, stopTime);
+
+    oscillator.connect(waveGain);
+    noiseSource.connect(noiseGain);
+    waveGain.connect(filterNode);
+    noiseGain.connect(filterNode);
+    filterNode.connect(ampGain);
+    ampGain.connect(busInput);
+
+    oscillator.start(when);
+    noiseSource.start(when);
+    oscillator.stop(stopTime);
+    noiseSource.stop(stopTime);
+
+    const disconnectDelayMs = Math.ceil((stopTime - this.audioContext.currentTime + 0.1) * 1000);
+    window.setTimeout(() => {
+      oscillator.disconnect?.();
+      noiseSource.disconnect?.();
+      waveGain.disconnect?.();
+      noiseGain.disconnect?.();
+      filterNode.disconnect?.();
+      ampGain.disconnect?.();
+    }, Math.max(0, disconnectDelayMs));
+    return true;
+  }
+
   triggerTrack(track, when = this.audioContext.currentTime, sliceIndex = null, noteDuration = null) {
     const playbackTrack = getTrackPlaybackSettings(track);
+    if (playbackTrack.mode === "synth") {
+      return this.triggerSynth(
+        {
+          trackIndex: playbackTrack.trackIndex,
+          wave: playbackTrack.synthWave,
+          tuneMidi: playbackTrack.synthTuneMidi,
+          noiseMix: playbackTrack.synthNoiseMix,
+          filterType: playbackTrack.synthFilterType,
+          filterFrequency: playbackTrack.synthFilterFrequency,
+          filterQ: playbackTrack.synthFilterQ,
+        },
+        when,
+        noteDuration,
+      );
+    }
     if (playbackTrack.mode === "granular") {
       return this.triggerGranular(
         {
@@ -717,7 +843,6 @@ class TransportLayer {
   }
 
   scheduleStep(stepIndex, when) {
-    if (!this.state.sample.buffer) return;
     this.state.tracks.forEach((track) => {
       if (!shouldAdvanceTrackStep(track, stepIndex)) return;
       const cellIndex = resolveTrackPatternStep(track, { advance: true });
@@ -792,6 +917,12 @@ function createVoiceConfig(id) {
     pitch: 0,
     chopGate: 70,
     sliceCount: 8,
+    synthWave: "sine",
+    synthTuneMidi: SYNTH_TUNE_DEFAULT_MIDI,
+    synthNoiseMix: 0,
+    synthFilterType: "lowpass",
+    synthFilterFrequency: 3200,
+    synthFilterQ: 0.8,
   };
 }
 
@@ -861,6 +992,14 @@ function getSelectedVoice() {
   return state.voices[state.selectedVoiceIndex];
 }
 
+function trackUsesSample(track) {
+  return getTrackVoice(track).mode !== "synth";
+}
+
+function hasAnySampleBasedTracks() {
+  return state.tracks.some((track) => trackUsesSample(track));
+}
+
 function createTrackPlaybackState(track = createTrack(1)) {
   return {
     sequentialIndex: 0,
@@ -922,7 +1061,7 @@ function normalizeVoice(index, source = {}) {
   return {
     ...fallback,
     name: typeof source.name === "string" ? source.name : fallback.name,
-    mode: source.mode === "chop" ? "chop" : source.mode === "granular" ? "granular" : fallback.mode,
+    mode: ["synth", "chop", "granular"].includes(source.mode) ? source.mode : fallback.mode,
     reverse: Boolean(source.reverse),
     grainLocation: ["fixed", "sequential", "sweep", "random"].includes(source.grainLocation) ? source.grainLocation : fallback.grainLocation,
     voicePlacement: Math.max(0, Math.min(100, Number(source.voicePlacement) || fallback.voicePlacement)),
@@ -933,6 +1072,12 @@ function normalizeVoice(index, source = {}) {
     pitch: Math.max(-24, Math.min(24, Number(source.pitch) || fallback.pitch)),
     chopGate: Math.max(10, Math.min(100, Number(source.chopGate) || fallback.chopGate)),
     sliceCount: Math.max(2, Math.min(16, Number(source.sliceCount) || fallback.sliceCount)),
+    synthWave: SYNTH_WAVES.includes(source.synthWave) ? source.synthWave : fallback.synthWave,
+    synthTuneMidi: clampMidiNote(source.synthTuneMidi ?? fallback.synthTuneMidi, fallback.synthTuneMidi),
+    synthNoiseMix: clampNoiseMix(source.synthNoiseMix ?? fallback.synthNoiseMix, fallback.synthNoiseMix),
+    synthFilterType: FILTER_TYPES.includes(source.synthFilterType) ? source.synthFilterType : fallback.synthFilterType,
+    synthFilterFrequency: clampFilterFrequency(source.synthFilterFrequency ?? fallback.synthFilterFrequency),
+    synthFilterQ: clampFilterQ(source.synthFilterQ ?? fallback.synthFilterQ),
   };
 }
 
@@ -963,6 +1108,12 @@ function writeStoredSession() {
       pitch: voice.pitch,
       chopGate: voice.chopGate,
       sliceCount: voice.sliceCount,
+      synthWave: voice.synthWave,
+      synthTuneMidi: voice.synthTuneMidi,
+      synthNoiseMix: voice.synthNoiseMix,
+      synthFilterType: voice.synthFilterType,
+      synthFilterFrequency: voice.synthFilterFrequency,
+      synthFilterQ: voice.synthFilterQ,
     })),
     tracks: state.tracks.map((track) => ({
       id: track.id,
@@ -1145,6 +1296,7 @@ function hexToRgba(hex, alpha) {
 }
 
 function formatModeLabel(mode) {
+  if (mode === "synth") return "synth";
   return mode === "granular" ? "grain" : mode;
 }
 
@@ -1329,6 +1481,7 @@ function isBlackKey(midiNote) {
 
 function getTrackPitchMidi(track) {
   const voice = getTrackVoice(track);
+  if (voice.mode === "synth") return voice.synthTuneMidi;
   return PITCH_LANE_REFERENCE_MIDI + voice.pitch;
 }
 
@@ -1462,10 +1615,26 @@ function getTrackPlaybackSettings(track) {
     pitch: voice.pitch,
     chopGate: voice.chopGate,
     sliceCount: voice.sliceCount,
+    synthWave: voice.synthWave,
+    synthTuneMidi: voice.synthTuneMidi,
+    synthNoiseMix: voice.synthNoiseMix,
+    synthFilterType: voice.synthFilterType,
+    synthFilterFrequency: voice.synthFilterFrequency,
+    synthFilterQ: voice.synthFilterQ,
     voiceName: voice.name,
     voiceId: voice.id,
     trackIndex: track.id - 1,
   };
+}
+
+function populateSynthTuneOptions() {
+  if (!(ui.synthTune instanceof HTMLSelectElement) || ui.synthTune.options.length) return;
+  for (let midiNote = 24; midiNote <= 84; midiNote += 1) {
+    const option = document.createElement("option");
+    option.value = String(midiNote);
+    option.textContent = formatMidiNote(midiNote);
+    ui.synthTune.append(option);
+  }
 }
 
 function renderPatternVoiceOptions() {
@@ -2636,6 +2805,7 @@ function renderPattern(activeStep = -1) {
 function syncUi() {
   const track = getSelectedTrack();
   const voice = getSelectedVoice();
+  populateSynthTuneOptions();
   renderPatternVoiceOptions();
   ui.sliceCountValue.textContent = String(voice.sliceCount);
   ui.mode.value = voice.mode;
@@ -2656,6 +2826,19 @@ function syncUi() {
   ui.chopGate.value = String(voice.chopGate);
   ui.chopGateValue.textContent = `${voice.chopGate}%`;
   ui.reverse.checked = voice.reverse;
+  ui.synthWave.value = voice.synthWave;
+  ui.synthTune.value = String(voice.synthTuneMidi);
+  ui.synthNoiseMixKnob.style.setProperty("--rotary-angle", `${getRotaryAngleFromPercent(voice.synthNoiseMix)}deg`);
+  ui.synthNoiseMixValue.textContent = `${Math.round(voice.synthNoiseMix)}%`;
+  ui.synthFilterType.value = voice.synthFilterType;
+  ui.synthFilterFrequency.value = String(voice.synthFilterFrequency);
+  ui.synthFilterFrequencyValue.textContent = formatFilterFrequencyValue(voice.synthFilterFrequency);
+  ui.synthFilterQ.value = String(voice.synthFilterQ);
+  ui.synthFilterQValue.textContent = voice.synthFilterQ.toFixed(1);
+  const synthMode = voice.mode === "synth";
+  ui.sampleSettingsGroup.classList.toggle("ui-hidden", synthMode);
+  ui.voicePlaybackSettingsGroup.classList.toggle("ui-hidden", synthMode);
+  ui.synthSettingsGroup.classList.toggle("ui-hidden", !synthMode);
   ui.bpm.value = String(state.bpm);
   ui.bpmValue.textContent = String(state.bpm);
   ui.swing.value = String(state.swing);
@@ -2717,6 +2900,46 @@ function updateSelectedVoice(patch) {
   renderPattern();
   drawWaveform();
   writeStoredSession();
+}
+
+function bindSynthNoiseMixKnob() {
+  if (!(ui.synthNoiseMixKnob instanceof HTMLElement)) return;
+  ui.synthNoiseMixKnob.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    const voice = getSelectedVoice();
+    const startY = event.clientY;
+    const startMix = clampNoiseMix(voice.synthNoiseMix, 0);
+
+    const handleMove = (moveEvent) => {
+      moveEvent.preventDefault();
+      const delta = (startY - moveEvent.clientY) / 1.2;
+      const nextMix = clampNoiseMix(startMix + delta, startMix);
+      voice.synthNoiseMix = nextMix;
+      ui.synthNoiseMixKnob.style.setProperty("--rotary-angle", `${getRotaryAngleFromPercent(nextMix)}deg`);
+      ui.synthNoiseMixValue.textContent = `${Math.round(nextMix)}%`;
+      state.tracks.forEach((track, index) => {
+        if (track.voiceIndex !== state.selectedVoiceIndex) return;
+        state.playback?.updateTrackBus(index, track);
+      });
+      writeStoredSession();
+    };
+
+    const handleEnd = () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleEnd);
+      window.removeEventListener("pointercancel", handleEnd);
+      syncUi();
+      renderTrackSelector();
+      renderEffectsMatrix();
+      renderMixer();
+      renderPattern();
+      drawWaveform();
+    };
+
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleEnd);
+    window.addEventListener("pointercancel", handleEnd);
+  });
 }
 
 function updateTrackFilter(trackIndex, patch) {
@@ -2872,6 +3095,11 @@ ui.spray.addEventListener("input", () => updateSelectedVoice({ spray: Number(ui.
 ui.pitch.addEventListener("input", () => updateSelectedVoice({ pitch: Number(ui.pitch.value) }));
 ui.chopGate.addEventListener("input", () => updateSelectedVoice({ chopGate: Number(ui.chopGate.value) }));
 ui.reverse.addEventListener("change", () => updateSelectedVoice({ reverse: ui.reverse.checked }));
+ui.synthWave.addEventListener("change", () => updateSelectedVoice({ synthWave: ui.synthWave.value }));
+ui.synthTune.addEventListener("change", () => updateSelectedVoice({ synthTuneMidi: Number(ui.synthTune.value) }));
+ui.synthFilterType.addEventListener("change", () => updateSelectedVoice({ synthFilterType: ui.synthFilterType.value }));
+ui.synthFilterFrequency.addEventListener("input", () => updateSelectedVoice({ synthFilterFrequency: Number(ui.synthFilterFrequency.value) }));
+ui.synthFilterQ.addEventListener("input", () => updateSelectedVoice({ synthFilterQ: Number(ui.synthFilterQ.value) }));
 ui.filterFrequency.addEventListener("input", () => {
   updateTrackFilter(state.filterOverlay.trackIndex, { frequency: Number(ui.filterFrequency.value) });
 });
@@ -2965,6 +3193,8 @@ ui.sampleBrowserOverlay.addEventListener("click", (event) => {
   if (event.target.dataset.sampleOverlayClose === "true") closeSampleBrowser();
 });
 
+bindSynthNoiseMixKnob();
+
 ui.waveformOverview.addEventListener("pointerdown", (event) => {
   const pointerState = getOverviewPointerState(event.clientX);
   if (!pointerState?.insideRegion) return;
@@ -3006,7 +3236,7 @@ ui.waveformOverview.addEventListener("pointerleave", () => {
 ui.transportToggle.addEventListener("click", async () => {
   try {
     await ensureAudio();
-    if (!state.sample.buffer && !state.defaultSampleLoaded) {
+    if (!state.sample.buffer && !state.defaultSampleLoaded && hasAnySampleBasedTracks()) {
       await loadDefaultSample();
     }
     if (isTransportRunning()) {
@@ -3016,7 +3246,7 @@ ui.transportToggle.addEventListener("click", async () => {
       setDiagnostics("sequence paused.", "warn");
       return;
     }
-    if (!state.sample.buffer) {
+    if (!state.sample.buffer && hasAnySampleBasedTracks()) {
       setDiagnostics("load a sample before starting the sequence.", "warn");
       return;
     }
@@ -3055,10 +3285,10 @@ window.addEventListener("keydown", async (event) => {
   event.preventDefault();
   try {
     await ensureAudio();
-    if (!state.sample.buffer && !state.defaultSampleLoaded) {
+    if (!state.sample.buffer && !state.defaultSampleLoaded && trackUsesSample(getSelectedTrack())) {
       await loadDefaultSample();
     }
-    if (!state.sample.buffer) {
+    if (!state.sample.buffer && trackUsesSample(getSelectedTrack())) {
       setDiagnostics("space trigger ignored because no sample is loaded.", "warn");
       return;
     }

@@ -166,8 +166,16 @@
             <h2>Voices</h2>
           </div>
           <div id="track-selector" class="track-selector"></div>
+          <label class="compact-field voice-type-control">
+            Voice Type
+            <select id="mode">
+              <option value="synth">Synth</option>
+              <option value="granular">Grain</option>
+              <option value="chop">Chop</option>
+            </select>
+          </label>
           <div class="control-stack track-settings-stack">
-            <section class="control-group" aria-labelledby="sample-group-title">
+            <section id="sample-settings-group" class="control-group" aria-labelledby="sample-group-title">
               <div class="control-group-head">
                 <h3 id="sample-group-title">Sample</h3>
               </div>
@@ -210,18 +218,11 @@
               </div>
             </section>
 
-            <section class="control-group" aria-labelledby="voice-group-title">
+            <section id="voice-playback-settings-group" class="control-group" aria-labelledby="voice-group-title">
               <div class="control-group-head">
                 <h3 id="voice-group-title">Voice</h3>
               </div>
               <div class="control-grid track-settings-grid">
-                <label class="compact-field">
-                  Type
-                  <select id="mode">
-                    <option value="granular">Grain</option>
-                    <option value="chop">Chop</option>
-                  </select>
-                </label>
                 <label class="compact-field">
                   Voice Location
                   <select id="grain-location">
@@ -258,6 +259,56 @@
                   <div class="slider-row">
                     <input id="pitch" type="range" min="-24" max="24" value="0" />
                     <span id="pitch-value" class="value-pill">0</span>
+                  </div>
+                </label>
+              </div>
+            </section>
+
+            <section id="synth-settings-group" class="control-group synth-settings-group ui-hidden" aria-labelledby="synth-group-title">
+              <div class="control-group-head">
+                <h3 id="synth-group-title">Synth</h3>
+              </div>
+              <div class="control-grid track-settings-grid">
+                <label class="compact-field">
+                  Wave
+                  <select id="synth-wave">
+                    <option value="sine">Sine</option>
+                    <option value="triangle">Triangle</option>
+                    <option value="sawtooth">Saw</option>
+                    <option value="square">Square</option>
+                  </select>
+                </label>
+                <label class="compact-field">
+                  Tune
+                  <select id="synth-tune"></select>
+                </label>
+                <div class="compact-field">
+                  <span>Wave / Noise Mix</span>
+                  <div class="rotary-row">
+                    <button id="synth-noise-mix-knob" class="voice-rotary" type="button" aria-label="Wave and noise mix"></button>
+                    <span id="synth-noise-mix-value" class="value-pill">0%</span>
+                  </div>
+                </div>
+                <label class="compact-field">
+                  SVF Type
+                  <select id="synth-filter-type">
+                    <option value="lowpass">Low Pass</option>
+                    <option value="bandpass">Band Pass</option>
+                    <option value="highpass">High Pass</option>
+                  </select>
+                </label>
+                <label class="compact-field">
+                  SVF Frequency
+                  <div class="slider-row">
+                    <input id="synth-filter-frequency" type="range" min="20" max="16000" value="3200" />
+                    <span id="synth-filter-frequency-value" class="value-pill">3.20 kHz</span>
+                  </div>
+                </label>
+                <label class="compact-field">
+                  SVF Q
+                  <div class="slider-row">
+                    <input id="synth-filter-q" type="range" min="0.1" max="20" step="0.1" value="0.8" />
+                    <span id="synth-filter-q-value" class="value-pill">0.8</span>
                   </div>
                 </label>
               </div>
