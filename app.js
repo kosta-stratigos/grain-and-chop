@@ -842,6 +842,11 @@ const state = {
   sampleLoadingDots: 0,
   sampleLoadingIntervalId: null,
   mixerAnimationFrameId: null,
+  mixerDragState: {
+    active: false,
+    trackIndex: null,
+    control: null,
+  },
   currentSampleName: "",
   fillDensity: 50,
   mixVolume: 0.9,
@@ -1191,6 +1196,23 @@ function setTrackVolumeFromMeter(trackIndex, clientY, meterElement) {
   writeStoredSession();
 }
 
+function beginMixerDrag(trackIndex, control) {
+  state.mixerDragState = {
+    active: true,
+    trackIndex,
+    control,
+  };
+}
+
+function endMixerDrag() {
+  state.mixerDragState = {
+    active: false,
+    trackIndex: null,
+    control: null,
+  };
+  paintMixerModulation();
+}
+
 function bindMasterMixerMeter(meterElement) {
   if (!(meterElement instanceof HTMLElement)) return;
   meterElement.addEventListener("pointerdown", (event) => {
@@ -1219,6 +1241,7 @@ function bindMixerMeter(meterElement, trackIndex) {
   meterElement.addEventListener("pointerdown", (event) => {
     event.preventDefault();
     state.selectedTrackIndex = trackIndex;
+    beginMixerDrag(trackIndex, "volume");
     syncUi();
     syncMixerSelection();
     renderTrackSelector();
@@ -1237,6 +1260,7 @@ function bindMixerMeter(meterElement, trackIndex) {
       window.removeEventListener("pointermove", handleMove);
       window.removeEventListener("pointerup", handleEnd);
       window.removeEventListener("pointercancel", handleEnd);
+      endMixerDrag();
     };
 
     window.addEventListener("pointermove", handleMove);
@@ -1252,6 +1276,7 @@ function bindMixerPanKnob(knobElement, trackIndex) {
     const track = state.tracks[trackIndex];
     if (!track) return;
     state.selectedTrackIndex = trackIndex;
+    beginMixerDrag(trackIndex, "pan");
     syncUi();
     syncMixerSelection();
     renderTrackSelector();
@@ -1276,6 +1301,7 @@ function bindMixerPanKnob(knobElement, trackIndex) {
       window.removeEventListener("pointermove", handleMove);
       window.removeEventListener("pointerup", handleEnd);
       window.removeEventListener("pointercancel", handleEnd);
+      endMixerDrag();
     };
 
     window.addEventListener("pointermove", handleMove);
@@ -1329,7 +1355,13 @@ function paintMixerModulation() {
     if (!track) return;
     const previousVolume = Number(strip.dataset.displayVolume);
     const previousPan = Number(strip.dataset.displayPan);
-    const modulation = transportRunning
+    const draggingThisTrack = state.mixerDragState.active && state.mixerDragState.trackIndex === trackIndex;
+    const modulation = draggingThisTrack
+      ? {
+        pan: clampPan(track.pan),
+        volume: Math.max(0, Math.min(1, track.volume)),
+      }
+      : transportRunning
       ? getTrackModulationValues(track, timeSeconds)
       : {
         pan: Number.isFinite(previousPan) ? previousPan : clampPan(track.pan),
