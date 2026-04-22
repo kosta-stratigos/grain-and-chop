@@ -1166,6 +1166,18 @@ function getPanRotation(pan) {
   return clampPan(pan) * 135;
 }
 
+function setMixVolumeFromMeter(clientY, meterElement) {
+  if (!(meterElement instanceof HTMLElement)) return;
+  const rect = meterElement.getBoundingClientRect();
+  if (rect.height <= 0) return;
+  state.mixVolume = 1 - Math.max(0, Math.min(1, (clientY - rect.top) / rect.height));
+  if (state.playback) state.playback.output.gain.value = state.mixVolume;
+  if (ui.mixVolume) ui.mixVolume.value = String(Math.round(state.mixVolume * 100));
+  if (ui.mixVolumeValue) ui.mixVolumeValue.textContent = `${Math.round(state.mixVolume * 100)}%`;
+  paintMasterMixMeter();
+  writeStoredSession();
+}
+
 function setTrackVolumeFromMeter(trackIndex, clientY, meterElement) {
   if (!(meterElement instanceof HTMLElement)) return;
   const rect = meterElement.getBoundingClientRect();
@@ -1177,6 +1189,34 @@ function setTrackVolumeFromMeter(trackIndex, clientY, meterElement) {
   state.playback?.updateTrackBus(trackIndex, track);
   paintMixerModulation();
   writeStoredSession();
+}
+
+function bindMasterMixerMeter(meterElement) {
+  if (!(meterElement instanceof HTMLElement)) return;
+  meterElement.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    setMixVolumeFromMeter(event.clientY, meterElement);
+    meterElement.setPointerCapture(event.pointerId);
+
+    const handleMove = (moveEvent) => {
+      if (!meterElement.hasPointerCapture(moveEvent.pointerId)) return;
+      moveEvent.preventDefault();
+      setMixVolumeFromMeter(moveEvent.clientY, meterElement);
+    };
+
+    const handleEnd = (endEvent) => {
+      if (meterElement.hasPointerCapture(endEvent.pointerId)) {
+        meterElement.releasePointerCapture(endEvent.pointerId);
+      }
+      meterElement.removeEventListener("pointermove", handleMove);
+      meterElement.removeEventListener("pointerup", handleEnd);
+      meterElement.removeEventListener("pointercancel", handleEnd);
+    };
+
+    meterElement.addEventListener("pointermove", handleMove);
+    meterElement.addEventListener("pointerup", handleEnd);
+    meterElement.addEventListener("pointercancel", handleEnd);
+  });
 }
 
 function bindMixerMeter(meterElement, trackIndex) {
@@ -1193,12 +1233,25 @@ function bindMixerMeter(meterElement, trackIndex) {
     writeStoredSession();
     setTrackVolumeFromMeter(trackIndex, event.clientY, meterElement);
     meterElement.setPointerCapture(event.pointerId);
-  });
 
-  meterElement.addEventListener("pointermove", (event) => {
-    if (!meterElement.hasPointerCapture(event.pointerId)) return;
-    event.preventDefault();
-    setTrackVolumeFromMeter(trackIndex, event.clientY, meterElement);
+    const handleMove = (moveEvent) => {
+      if (!meterElement.hasPointerCapture(moveEvent.pointerId)) return;
+      moveEvent.preventDefault();
+      setTrackVolumeFromMeter(trackIndex, moveEvent.clientY, meterElement);
+    };
+
+    const handleEnd = (endEvent) => {
+      if (meterElement.hasPointerCapture(endEvent.pointerId)) {
+        meterElement.releasePointerCapture(endEvent.pointerId);
+      }
+      meterElement.removeEventListener("pointermove", handleMove);
+      meterElement.removeEventListener("pointerup", handleEnd);
+      meterElement.removeEventListener("pointercancel", handleEnd);
+    };
+
+    meterElement.addEventListener("pointermove", handleMove);
+    meterElement.addEventListener("pointerup", handleEnd);
+    meterElement.addEventListener("pointercancel", handleEnd);
   });
 }
 
@@ -1285,6 +1338,7 @@ function paintMixerModulation() {
   const timeSeconds = state.audioContext ? state.audioContext.currentTime : 0;
   const transportRunning = isTransportRunning();
   ui.mixerGrid.querySelectorAll(".mixer-strip").forEach((strip) => {
+    if (strip.dataset.mixerKind === "master") return;
     const trackIndex = Number(strip.dataset.trackIndex);
     const track = state.tracks[trackIndex];
     if (!track) return;
@@ -1322,9 +1376,27 @@ function paintMixerModulation() {
 function syncMixerSelection() {
   if (!ui.mixerGrid) return;
   ui.mixerGrid.querySelectorAll(".mixer-strip").forEach((strip) => {
+    if (strip.dataset.mixerKind === "master") {
+      strip.classList.remove("active");
+      return;
+    }
     const trackIndex = Number(strip.dataset.trackIndex);
     strip.classList.toggle("active", trackIndex === state.selectedTrackIndex);
   });
+}
+
+function paintMasterMixMeter() {
+  if (!ui.mixerGrid) return;
+  const strip = ui.mixerGrid.querySelector('.mixer-strip[data-mixer-kind="master"]');
+  if (!(strip instanceof HTMLElement)) return;
+  const meter = strip.querySelector('[data-mixer-role="master-volume"]');
+  if (meter instanceof HTMLElement) {
+    meter.style.setProperty("--meter-fill", `${Math.round(state.mixVolume * 100)}%`);
+  }
+  const value = strip.querySelector('[data-mixer-value="master-volume"]');
+  if (value instanceof HTMLElement) {
+    value.textContent = `${Math.round(state.mixVolume * 100)}%`;
+  }
 }
 
 function animateMixerModulation() {
@@ -2269,6 +2341,36 @@ function renderTrackSelector() {
 
 function renderMixer() {
   ui.mixerGrid.innerHTML = "";
+
+  const masterStrip = document.createElement("div");
+  masterStrip.className = "mixer-strip master";
+  masterStrip.dataset.mixerKind = "master";
+
+  const masterHead = document.createElement("div");
+  masterHead.className = "mixer-head";
+  masterHead.innerHTML = '<span class="mixer-name">MIX</span>';
+  masterStrip.append(masterHead);
+
+  const masterControls = document.createElement("div");
+  masterControls.className = "mixer-controls";
+
+  const masterValue = document.createElement("span");
+  masterValue.className = "mixer-meter-value";
+  masterValue.dataset.mixerValue = "master-volume";
+  masterValue.textContent = `${Math.round(state.mixVolume * 100)}%`;
+  masterControls.append(masterValue);
+
+  const masterMeter = document.createElement("div");
+  masterMeter.className = "mixer-meter";
+  masterMeter.dataset.mixerRole = "master-volume";
+  masterMeter.style.setProperty("--meter-fill", `${Math.round(state.mixVolume * 100)}%`);
+  masterMeter.innerHTML = '<div class="mixer-meter-fill"></div><div class="mixer-meter-thumb"></div>';
+  bindMasterMixerMeter(masterMeter);
+  masterControls.append(masterMeter);
+
+  masterStrip.append(masterControls);
+  ui.mixerGrid.append(masterStrip);
+
   state.tracks.forEach((track, index) => {
     const strip = document.createElement("div");
     strip.className = `mixer-strip${index === state.selectedTrackIndex ? " active" : ""}`;
@@ -2277,7 +2379,7 @@ function renderMixer() {
 
     const head = document.createElement("div");
     head.className = "mixer-head";
-    head.innerHTML = `<span class="mixer-name">${formatTrackName(track, index)}</span>`;
+    head.innerHTML = `<span class="mixer-name">T${track.id}</span>`;
     strip.append(head);
 
     const controls = document.createElement("div");
@@ -2317,7 +2419,7 @@ function renderMixer() {
 
     const muteButton = document.createElement("button");
     muteButton.className = `mixer-mini${track.muted ? " active" : ""}`;
-    muteButton.textContent = "Mute";
+    muteButton.textContent = "M";
     applyTrackColor(muteButton, track.color);
     muteButton.addEventListener("click", () => {
       track.muted = !track.muted;
@@ -2334,7 +2436,7 @@ function renderMixer() {
 
     const soloButton = document.createElement("button");
     soloButton.className = `mixer-mini${track.solo ? " active" : ""}`;
-    soloButton.textContent = "Solo";
+    soloButton.textContent = "S";
     applyTrackColor(soloButton, track.color);
     soloButton.addEventListener("click", () => {
       track.solo = !track.solo;
@@ -2353,6 +2455,7 @@ function renderMixer() {
     strip.append(controls);
     ui.mixerGrid.append(strip);
   });
+  paintMasterMixMeter();
   paintMixerModulation();
   syncMixerSelection();
   ensureMixerAnimation();
