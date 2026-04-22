@@ -1,0 +1,450 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Grain and Chop</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Lexend+Deca:wght@400;500;600;700&family=Quicksand:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="hero">
+        <div class="hero-copy">
+          <h1>Winnow &amp; Weave</h1>
+          <p class="subhead">Patterned Granular Synthesizer and Sample Chopper</p>
+        </div>
+      </header>
+
+      <main class="layout">
+        <section class="panel panel-wide">
+          <div class="panel-head">
+            <div class="panel-head-copy">
+              <h2>Sample</h2>
+              <p id="sample-status" class="sample-name"></p>
+            </div>
+            <button id="sample-browser-toggle" class="primary sample-file-picker" type="button">Load New Sample</button>
+            <input id="sample-input" type="file" accept="audio/*" hidden />
+          </div>
+          <canvas id="waveform" width="1200" height="168"></canvas>
+          <canvas id="waveform-overview" width="1200" height="28"></canvas>
+          <div class="region-grid">
+            <label>
+              Start
+              <input id="region-start" type="range" min="0" max="1000" value="0" />
+            </label>
+            <label>
+              End
+              <input id="region-end" type="range" min="0" max="1000" value="1000" />
+            </label>
+          </div>
+        </section>
+
+        <section class="panel panel-span-2 voice-panel">
+          <div class="panel-head">
+            <h2>Voice Settings</h2>
+          </div>
+          <div id="track-selector" class="track-selector"></div>
+          <div class="control-stack track-settings-stack">
+            <section class="control-group" aria-labelledby="sample-group-title">
+              <div class="control-group-head">
+                <h3 id="sample-group-title">Sample</h3>
+              </div>
+              <div class="control-grid track-settings-grid">
+                <label class="compact-field">
+                  Slices
+                  <div class="slider-row">
+                    <input id="slice-count" type="range" min="2" max="16" value="8" />
+                    <span id="slice-count-value" class="value-pill">8</span>
+                  </div>
+                </label>
+                <label class="compact-field">
+                  Grain Size (ms)
+                  <div class="slider-row">
+                    <input id="grain-size" type="range" min="20" max="350" value="110" />
+                    <span id="grain-size-value" class="value-pill">110</span>
+                  </div>
+                </label>
+                <label class="compact-field">
+                  Density (grains/s)
+                  <div class="slider-row">
+                    <input id="grain-density" type="range" min="2" max="40" value="12" />
+                    <span id="grain-density-value" class="value-pill">12</span>
+                  </div>
+                </label>
+                <label class="compact-field">
+                  Spray
+                  <div class="slider-row">
+                    <input id="spray" type="range" min="0" max="100" value="18" />
+                    <span id="spray-value" class="value-pill">0.18</span>
+                  </div>
+                </label>
+                <label class="compact-field">
+                  Chop Gate
+                  <div class="slider-row">
+                    <input id="chop-gate" type="range" min="10" max="100" value="70" />
+                    <span id="chop-gate-value" class="value-pill">70%</span>
+                  </div>
+                </label>
+              </div>
+            </section>
+
+            <section class="control-group" aria-labelledby="voice-group-title">
+              <div class="control-group-head">
+                <h3 id="voice-group-title">Voice</h3>
+              </div>
+              <div class="control-grid track-settings-grid">
+                <label class="compact-field">
+                  Type
+                  <select id="mode">
+                    <option value="granular">Grain</option>
+                    <option value="chop">Chop</option>
+                  </select>
+                </label>
+                <label class="compact-field">
+                  Voice Location
+                  <select id="grain-location">
+                    <option value="fixed">Fixed</option>
+                    <option value="sequential">Sequential</option>
+                    <option value="sweep">Sweep</option>
+                    <option value="random">Random</option>
+                  </select>
+                </label>
+                <label class="compact-field" id="voice-placement-field">
+                  Voice Placement
+                  <div class="slider-row">
+                    <input id="voice-placement" type="range" min="0" max="100" value="50" />
+                    <span id="voice-placement-value" class="value-pill">50%</span>
+                  </div>
+                </label>
+                <label class="compact-field">
+                  Voice Playback Mode
+                  <select id="voice-playback-mode">
+                    <option value="one-shot">One Shot</option>
+                    <option value="loop">Loop</option>
+                    <option value="smooth-loop">Smooth Loop</option>
+                  </select>
+                </label>
+                <label class="compact-field compact-field-inline">
+                  <span>Reverse</span>
+                  <span class="checkbox-inline">
+                    <input id="reverse" type="checkbox" />
+                    <span>enabled</span>
+                  </span>
+                </label>
+                <label class="compact-field">
+                  Pitch (semitones)
+                  <div class="slider-row">
+                    <input id="pitch" type="range" min="-24" max="24" value="0" />
+                    <span id="pitch-value" class="value-pill">0</span>
+                  </div>
+                </label>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="panel effects-panel">
+          <div class="panel-head">
+            <div class="panel-head-copy">
+              <h2>Effects Matrix</h2>
+              <p>Click to toggle. Hold for 1s to edit.</p>
+            </div>
+          </div>
+          <div id="effects-matrix" class="effects-matrix"></div>
+        </section>
+
+        <section class="panel mixer-panel">
+          <div class="panel-head">
+            <h2>Output Mix</h2>
+          </div>
+          <label class="compact-field mix-volume-control">
+            Mix Volume
+            <div class="slider-row">
+              <input id="mix-volume" type="range" min="0" max="100" value="90" />
+              <span id="mix-volume-value" class="value-pill">90%</span>
+            </div>
+          </label>
+          <div id="mixer-grid" class="mixer-grid"></div>
+        </section>
+
+        <section class="panel micro-panel">
+          <div class="panel-head">
+            <div class="panel-head-copy">
+              <h2>Playback Control</h2>
+            </div>
+          </div>
+          <div class="control-grid micro-control-grid">
+            <label class="compact-field span-2">
+              BPM
+              <div class="slider-row">
+                <input id="bpm" type="range" min="60" max="180" value="112" />
+                <span id="bpm-value" class="value-pill">112</span>
+              </div>
+            </label>
+            <label class="compact-field span-2">
+              Swing
+              <div class="slider-row">
+                <input id="swing" type="range" min="0" max="100" value="0" />
+                <span id="swing-value" class="value-pill">0%</span>
+              </div>
+            </label>
+            <div class="transport-single span-2">
+              <button id="transport-toggle" class="primary">Play</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel panel-wide">
+          <div class="panel-head panel-head-pattern">
+            <div class="panel-head-copy">
+              <h2>Pattern</h2>
+            </div>
+            <div class="pattern-head-actions">
+              <div class="fill-pattern-control">
+                <label class="fill-density-control">
+                  <span class="pattern-steps-meta">
+                    <span>Fill Density</span>
+                    <span id="fill-density-value" class="pattern-steps-value">50%</span>
+                  </span>
+                  <input id="fill-density" type="range" min="0" max="100" value="50" />
+                </label>
+                <button id="randomize-pattern">Fill Pattern</button>
+              </div>
+              <label class="pattern-rate-control">
+                <span class="pattern-steps-meta">
+                  <span>Voice</span>
+                </span>
+                <select id="pattern-voice-select">
+                  <option value="0">Voice 1</option>
+                  <option value="1">Voice 2</option>
+                  <option value="2">Voice 3</option>
+                  <option value="3">Voice 4</option>
+                </select>
+              </label>
+              <label class="pattern-rate-control">
+                <span class="pattern-steps-meta">
+                  <span>Steps</span>
+                  <span id="track-steps-value" class="pattern-steps-value">16</span>
+                </span>
+                <input id="track-steps" type="range" min="1" max="32" value="16" />
+              </label>
+              <label class="pattern-rate-control">
+                <span class="pattern-steps-meta">
+                  <span>Playback Mode</span>
+                </span>
+                <select id="track-playback-mode">
+                  <option value="forward">Forward</option>
+                  <option value="ping-pong">Ping Pong</option>
+                  <option value="random">Random</option>
+                  <option value="reverse">Reverse</option>
+                </select>
+              </label>
+              <label class="pattern-rate-control">
+                <span class="pattern-steps-meta">
+                  <span>Step Probability</span>
+                  <span id="track-step-probability-value" class="pattern-steps-value">100%</span>
+                </span>
+                <input id="track-step-probability" type="range" min="0" max="100" value="100" />
+              </label>
+            </div>
+          </div>
+          <div id="pattern-grid" class="pattern-grid"></div>
+        </section>
+      </main>
+    </div>
+
+    <div id="filter-overlay" class="overlay-shell is-hidden" aria-hidden="true">
+      <div class="overlay-backdrop" data-overlay-close="true"></div>
+      <section class="overlay-panel" role="dialog" aria-modal="true" aria-labelledby="filter-overlay-title">
+        <div class="panel-head overlay-head">
+          <div class="panel-head-copy">
+            <h2 id="filter-overlay-title">Filter Settings</h2>
+            <p id="filter-overlay-track"></p>
+          </div>
+          <button id="filter-overlay-close" type="button">Close</button>
+        </div>
+        <div class="control-stack overlay-controls">
+          <label class="compact-field">
+            Frequency
+            <div class="slider-row">
+              <input id="filter-frequency" type="range" min="20" max="16000" step="1" value="1200" />
+              <span id="filter-frequency-value" class="value-pill">1.20 kHz</span>
+            </div>
+          </label>
+          <label class="compact-field">
+            Q
+            <div class="slider-row">
+              <input id="filter-q" type="range" min="0.1" max="20" step="0.1" value="0.8" />
+              <span id="filter-q-value" class="value-pill">0.8</span>
+            </div>
+          </label>
+          <fieldset class="radio-group">
+            <legend>Mode</legend>
+            <label class="radio-chip">
+              <input type="radio" name="filter-type" value="lowpass" checked />
+              <span>LP</span>
+            </label>
+            <label class="radio-chip">
+              <input type="radio" name="filter-type" value="bandpass" />
+              <span>BP</span>
+            </label>
+            <label class="radio-chip">
+              <input type="radio" name="filter-type" value="highpass" />
+              <span>HP</span>
+            </label>
+          </fieldset>
+        </div>
+      </section>
+    </div>
+
+    <div id="delay-overlay" class="overlay-shell is-hidden" aria-hidden="true">
+      <div class="overlay-backdrop" data-delay-overlay-close="true"></div>
+      <section class="overlay-panel" role="dialog" aria-modal="true" aria-labelledby="delay-overlay-title">
+        <div class="panel-head overlay-head">
+          <div class="panel-head-copy">
+            <h2 id="delay-overlay-title">Delay Settings</h2>
+            <p id="delay-overlay-track"></p>
+          </div>
+          <button id="delay-overlay-close" type="button">Close</button>
+        </div>
+        <div class="control-stack overlay-controls">
+          <label class="compact-field">
+            Time
+            <div class="slider-row">
+              <input id="delay-time" type="range" min="40" max="1200" step="1" value="280" />
+              <span id="delay-time-value" class="value-pill">280 ms</span>
+            </div>
+          </label>
+          <label class="compact-field">
+            Feedback
+            <div class="slider-row">
+              <input id="delay-feedback" type="range" min="0" max="95" step="1" value="35" />
+              <span id="delay-feedback-value" class="value-pill">35%</span>
+            </div>
+          </label>
+          <label class="compact-field">
+            Decay
+            <div class="slider-row">
+              <input id="delay-decay" type="range" min="0" max="100" step="1" value="55" />
+              <span id="delay-decay-value" class="value-pill">55%</span>
+            </div>
+          </label>
+          <label class="compact-field">
+            Tone
+            <div class="slider-row">
+              <input id="delay-tone" type="range" min="0" max="100" step="1" value="60" />
+              <span id="delay-tone-value" class="value-pill">60%</span>
+            </div>
+          </label>
+          <label class="compact-field">
+            Mix
+            <div class="slider-row">
+              <input id="delay-mix" type="range" min="0" max="100" step="1" value="30" />
+              <span id="delay-mix-value" class="value-pill">30%</span>
+            </div>
+          </label>
+        </div>
+      </section>
+    </div>
+
+    <div id="drift-overlay" class="overlay-shell is-hidden" aria-hidden="true">
+      <div class="overlay-backdrop" data-drift-overlay-close="true"></div>
+      <section class="overlay-panel" role="dialog" aria-modal="true" aria-labelledby="drift-overlay-title">
+        <div class="panel-head overlay-head">
+          <div class="panel-head-copy">
+            <h2 id="drift-overlay-title">Drift Settings</h2>
+            <p id="drift-overlay-track"></p>
+          </div>
+          <button id="drift-overlay-close" type="button">Close</button>
+        </div>
+        <div class="control-stack overlay-controls">
+          <label class="compact-field">
+            Rate (ms)
+            <input id="drift-rate" type="text" inputmode="numeric" value="1500" />
+          </label>
+          <div class="compact-field">
+            <span class="dual-range-meta">
+              <span>Range</span>
+              <span><span id="drift-range-min-value">L35</span> to <span id="drift-range-max-value">R35</span></span>
+            </span>
+            <div id="drift-range" class="dual-range">
+              <div class="dual-range-track"></div>
+              <div class="dual-range-fill"></div>
+              <input id="drift-range-min" class="dual-range-input" type="range" min="-100" max="100" step="1" value="-35" />
+              <input id="drift-range-max" class="dual-range-input" type="range" min="-100" max="100" step="1" value="35" />
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div id="swell-overlay" class="overlay-shell is-hidden" aria-hidden="true">
+      <div class="overlay-backdrop" data-swell-overlay-close="true"></div>
+      <section class="overlay-panel" role="dialog" aria-modal="true" aria-labelledby="swell-overlay-title">
+        <div class="panel-head overlay-head">
+          <div class="panel-head-copy">
+            <h2 id="swell-overlay-title">Swell Settings</h2>
+            <p id="swell-overlay-track"></p>
+          </div>
+          <button id="swell-overlay-close" type="button">Close</button>
+        </div>
+        <div class="control-stack overlay-controls">
+          <label class="compact-field">
+            Rate (ms)
+            <input id="swell-rate" type="text" inputmode="numeric" value="1800" />
+          </label>
+          <div class="compact-field">
+            <span class="dual-range-meta">
+              <span>Range</span>
+              <span><span id="swell-range-min-value">65%</span> to <span id="swell-range-max-value">100%</span></span>
+            </span>
+            <div id="swell-range" class="dual-range">
+              <div class="dual-range-track"></div>
+              <div class="dual-range-fill"></div>
+              <input id="swell-range-min" class="dual-range-input" type="range" min="0" max="100" step="1" value="65" />
+              <input id="swell-range-max" class="dual-range-input" type="range" min="0" max="100" step="1" value="100" />
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div id="sample-browser-overlay" class="overlay-shell is-hidden" aria-hidden="true">
+      <div class="overlay-backdrop" data-sample-overlay-close="true"></div>
+      <section class="overlay-panel sample-browser-panel" role="dialog" aria-modal="true" aria-labelledby="sample-browser-title">
+        <div class="panel-head overlay-head">
+          <div class="panel-head-copy">
+            <h2 id="sample-browser-title">Sample Library</h2>
+            <p>Load from the repo `samples` folder or choose a local file.</p>
+          </div>
+          <button id="sample-browser-close" type="button">Close</button>
+        </div>
+        <div class="sample-browser-sections">
+          <div class="control-group sample-browser-group">
+            <div class="control-group-head">
+              <h3>Repo Samples</h3>
+            </div>
+            <div id="sample-library-list" class="sample-library-list"></div>
+          </div>
+          <div class="control-group sample-browser-group">
+            <div class="control-group-head">
+              <h3>Local File</h3>
+            </div>
+            <label class="file-picker primary sample-browser-picker">
+              <span>Choose From Computer</span>
+              <input id="sample-browser-input" type="file" accept="audio/*" />
+            </label>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
