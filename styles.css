@@ -221,7 +221,7 @@ button.primary,
   justify-content: space-between;
   gap: 10px;
   align-items: flex-start;
-  margin-bottom: 8px;
+  margin-bottom: 16px;
 }
 
 .panel-head-copy {
@@ -311,6 +311,16 @@ h2 {
 .sequence-fill-stack {
   display: grid;
   gap: 8px;
+}
+
+.sequence-settings-group {
+  gap: 0;
+  padding: 12px;
+}
+
+.sequence-settings-group.is-track-active {
+  border-color: var(--track-color-strong);
+  background: var(--track-color-soft);
 }
 
 .pitch-lanes {
@@ -1168,9 +1178,13 @@ input[type="range"]::-moz-range-thumb {
   min-width: 148px;
 }
 
-.sequence-settings-stack .pattern-rate-control,
+.sequence-settings-stack .compact-field,
 .sequence-fill-stack .fill-pattern-control {
   min-width: 0;
+}
+
+.sequence-settings-stack .compact-field + .compact-field {
+  margin-top: 10px;
 }
 
 .placeholder-panel {

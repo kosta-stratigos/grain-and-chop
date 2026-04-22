@@ -18,6 +18,7 @@ const ui = {
   fillDensity: document.querySelector("#fill-density"),
   fillDensityValue: document.querySelector("#fill-density-value"),
   trackSelector: document.querySelector("#track-selector"),
+  sequenceSettingsGroup: document.querySelector("#sequence-settings-group"),
   pitchLanes: document.querySelector("#pitch-lanes"),
   patternVoiceSelect: document.querySelector("#pattern-voice-select"),
   mode: document.querySelector("#mode"),
@@ -2669,16 +2670,10 @@ function syncUi() {
   ui.mixVolume.value = String(Math.round(state.mixVolume * 100));
   ui.mixVolumeValue.textContent = `${Math.round(state.mixVolume * 100)}%`;
   ui.fillDensityValue.textContent = `${state.fillDensity}%`;
-  [
-    ui.patternVoiceSelect?.closest(".pattern-rate-control"),
-    ui.trackSteps?.closest(".pattern-rate-control"),
-    ui.trackPlaybackMode?.closest(".pattern-rate-control"),
-    ui.trackStepProbability?.closest(".pattern-rate-control"),
-  ].forEach((control) => {
-    if (!(control instanceof HTMLElement)) return;
-    control.classList.add("is-track-active");
-    applyTrackColor(control, track.color);
-  });
+  if (ui.sequenceSettingsGroup instanceof HTMLElement) {
+    ui.sequenceSettingsGroup.classList.add("is-track-active");
+    applyTrackColor(ui.sequenceSettingsGroup, track.color);
+  }
   renderPitchLanes();
   syncTransportButton();
   syncFilterOverlay();

@@ -85,43 +85,41 @@
               <h2>Sequence Settings</h2>
             </div>
           </div>
-          <div class="sequence-settings-stack">
-            <label class="pattern-rate-control">
-              <span class="pattern-steps-meta">
-                <span>Voice</span>
-              </span>
-              <select id="pattern-voice-select">
-                <option value="0">Voice 1</option>
-                <option value="1">Voice 2</option>
-                <option value="2">Voice 3</option>
-                <option value="3">Voice 4</option>
-              </select>
-            </label>
-            <label class="pattern-rate-control">
-              <span class="pattern-steps-meta">
-                <span>Steps</span>
-                <span id="track-steps-value" class="pattern-steps-value">16</span>
-              </span>
-              <input id="track-steps" type="range" min="1" max="32" value="16" />
-            </label>
-            <label class="pattern-rate-control">
-              <span class="pattern-steps-meta">
-                <span>Playback Mode</span>
-              </span>
-              <select id="track-playback-mode">
-                <option value="forward">Forward</option>
-                <option value="ping-pong">Ping Pong</option>
-                <option value="random">Random</option>
-                <option value="reverse">Reverse</option>
-              </select>
-            </label>
-            <label class="pattern-rate-control">
-              <span class="pattern-steps-meta">
-                <span>Step Probability</span>
-                <span id="track-step-probability-value" class="pattern-steps-value">100%</span>
-              </span>
-              <input id="track-step-probability" type="range" min="0" max="100" value="100" />
-            </label>
+          <div id="sequence-settings-group" class="control-group sequence-settings-group">
+            <div class="sequence-settings-stack">
+              <label class="compact-field">
+                Voice
+                <select id="pattern-voice-select">
+                  <option value="0">Voice 1</option>
+                  <option value="1">Voice 2</option>
+                  <option value="2">Voice 3</option>
+                  <option value="3">Voice 4</option>
+                </select>
+              </label>
+              <label class="compact-field">
+                Steps
+                <div class="slider-row">
+                  <input id="track-steps" type="range" min="1" max="32" value="16" />
+                  <span id="track-steps-value" class="value-pill">16</span>
+                </div>
+              </label>
+              <label class="compact-field">
+                Playback Mode
+                <select id="track-playback-mode">
+                  <option value="forward">Forward</option>
+                  <option value="ping-pong">Ping Pong</option>
+                  <option value="random">Random</option>
+                  <option value="reverse">Reverse</option>
+                </select>
+              </label>
+              <label class="compact-field">
+                Step Probability
+                <div class="slider-row">
+                  <input id="track-step-probability" type="range" min="0" max="100" value="100" />
+                  <span id="track-step-probability-value" class="value-pill">100%</span>
+                </div>
+              </label>
+            </div>
           </div>
         </section>
 
