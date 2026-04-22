@@ -18,6 +18,8 @@ const ui = {
   fillDensity: document.querySelector("#fill-density"),
   fillDensityValue: document.querySelector("#fill-density-value"),
   trackSelector: document.querySelector("#track-selector"),
+  scaleGrid: document.querySelector("#scale-grid"),
+  pitchLanes: document.querySelector("#pitch-lanes"),
   patternVoiceSelect: document.querySelector("#pattern-voice-select"),
   mode: document.querySelector("#mode"),
   grainLocation: document.querySelector("#grain-location"),
@@ -103,10 +105,27 @@ const SAMPLE_LIBRARY = [
 const BASE_GRID_STEPS = 32;
 const MAX_PATTERN_CELLS = 32;
 const TRACK_COUNT = 4;
+const PITCH_LANE_NOTE_COUNT = 48;
+const PITCH_LANE_START_MIDI = 38;
+const PITCH_LANE_REFERENCE_MIDI = 62;
 const TRACK_COLORS = ["#59d0ff", "#ff8f5a", "#8dff7a", "#ffd34d"];
 const EFFECT_KEYS = ["filter", "delay", "drift", "swell"];
 const FILTER_TYPES = ["lowpass", "bandpass", "highpass"];
 const TRACK_PLAYBACK_MODES = ["forward", "ping-pong", "random", "reverse"];
+const SCALE_OPTIONS = [
+  { value: "chromatic", label: "Chromatic", intervals: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] },
+  { value: "ionian", label: "Ionian (I)", intervals: [0, 2, 4, 5, 7, 9, 11] },
+  { value: "dorian", label: "Dorian (ii)", intervals: [0, 2, 3, 5, 7, 9, 10] },
+  { value: "phrygian", label: "Phrygian (iii)", intervals: [0, 1, 3, 5, 7, 8, 10] },
+  { value: "lydian", label: "Lydian (IV)", intervals: [0, 2, 4, 6, 7, 9, 11] },
+  { value: "mixolydian", label: "Mixolydian (V)", intervals: [0, 2, 4, 5, 7, 9, 10] },
+  { value: "aeolian", label: "Aeolian (vi)", intervals: [0, 2, 3, 5, 7, 8, 10] },
+  { value: "locrian", label: "Locrian (vii°)", intervals: [0, 1, 3, 5, 6, 8, 10] },
+  { value: "major-pent", label: "Major Pent.", intervals: [0, 2, 4, 7, 9] },
+  { value: "minor-pent", label: "Minor Pent.", intervals: [0, 3, 5, 7, 10] },
+];
+const D_ROOT_PITCH_CLASS = 2;
+const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
 function updateRangeFill(input) {
   if (!(input instanceof HTMLInputElement) || input.type !== "range") return;
@@ -164,6 +183,14 @@ function clampPanSweep(value, fallback = 0) {
 
 function clampVolumeSweep(value, fallback = 100) {
   return Math.max(0, Math.min(100, clampIntegerText(value, fallback)));
+}
+
+function normalizeScaleMode(value, fallback = "chromatic") {
+  return SCALE_OPTIONS.some((option) => option.value === value) ? value : fallback;
+}
+
+function getScaleDefinition(scaleMode = "chromatic") {
+  return SCALE_OPTIONS.find((option) => option.value === scaleMode) ?? SCALE_OPTIONS[0];
 }
 
 function createDefaultFilterSettings() {
@@ -737,6 +764,7 @@ function createTrack(id) {
     name: `Track ${id}`,
     color: TRACK_COLORS[(id - 1) % TRACK_COLORS.length],
     voiceIndex: id - 1,
+    scaleMode: "chromatic",
     muted: false,
     solo: false,
     volume: 0.85,
@@ -866,6 +894,7 @@ function normalizeTrack(index, source = {}) {
     ...fallback,
     color: typeof source.color === "string" ? source.color : fallback.color,
     voiceIndex: Math.max(0, Math.min(TRACK_COUNT - 1, resolvedVoiceIndex)),
+    scaleMode: normalizeScaleMode(source.scaleMode, fallback.scaleMode),
     muted: Boolean(source.muted),
     solo: Boolean(source.solo),
     volume: Math.max(0, Math.min(1, Number(source.volume) || fallback.volume)),
@@ -934,6 +963,7 @@ function writeStoredSession() {
       id: track.id,
       color: track.color,
       voiceIndex: track.voiceIndex,
+      scaleMode: track.scaleMode,
       muted: track.muted,
       solo: track.solo,
       volume: track.volume,
@@ -1133,6 +1163,26 @@ function formatPanSweepValue(value) {
   return `${value < 0 ? "L" : "R"}${Math.abs(value)}`;
 }
 
+function getMidiPitchClass(midiNote) {
+  return ((midiNote % 12) + 12) % 12;
+}
+
+function isBlackKey(midiNote) {
+  return [1, 3, 6, 8, 10].includes(getMidiPitchClass(midiNote));
+}
+
+function getTrackPitchMidi(track) {
+  const voice = getTrackVoice(track);
+  return PITCH_LANE_REFERENCE_MIDI + voice.pitch;
+}
+
+function isMidiNoteInTrackScale(track, midiNote) {
+  const scale = getScaleDefinition(track.scaleMode);
+  if (scale.value === "chromatic") return true;
+  const relativePitchClass = (getMidiPitchClass(midiNote) - D_ROOT_PITCH_CLASS + 12) % 12;
+  return scale.intervals.includes(relativePitchClass);
+}
+
 function getTrackModulationValues(track, timeSeconds = 0) {
   const drift = getTrackDrift(track);
   const swell = getTrackSwell(track);
@@ -1235,6 +1285,94 @@ function renderPatternVoiceOptions() {
     option.value = String(index);
     option.textContent = formatVoiceName(voice, index);
     ui.patternVoiceSelect.append(option);
+  });
+}
+
+function renderScaleGrid() {
+  if (!ui.scaleGrid) return;
+  ui.scaleGrid.innerHTML = "";
+
+  state.tracks.forEach((track, index) => {
+    const row = document.createElement("div");
+    row.className = `scale-row${index === state.selectedTrackIndex ? " active" : ""}`;
+    applyTrackColor(row, track.color);
+
+    const head = document.createElement("div");
+    head.className = "scale-row-head";
+    head.innerHTML = `<span class="scale-row-name">${formatTrackName(track, index)}</span><span class="scale-row-key">Key: D</span>`;
+    row.append(head);
+
+    const select = document.createElement("select");
+    SCALE_OPTIONS.forEach((option) => {
+      const element = document.createElement("option");
+      element.value = option.value;
+      element.textContent = option.label;
+      select.append(element);
+    });
+    select.value = track.scaleMode;
+    select.addEventListener("change", () => {
+      track.scaleMode = normalizeScaleMode(select.value, track.scaleMode);
+      renderScaleGrid();
+      renderPitchLanes();
+      writeStoredSession();
+    });
+    row.append(select);
+
+    ui.scaleGrid.append(row);
+  });
+}
+
+function renderPitchLanes() {
+  if (!ui.pitchLanes) return;
+  ui.pitchLanes.innerHTML = "";
+
+  state.tracks.forEach((track, index) => {
+    const lane = document.createElement("div");
+    lane.className = "pitch-lane";
+
+    const label = document.createElement("button");
+    label.className = `pitch-lane-label${index === state.selectedTrackIndex ? " active" : ""}`;
+    applyTrackColor(label, track.color);
+    label.textContent = formatTrackName(track, index);
+    label.addEventListener("click", () => {
+      state.selectedTrackIndex = index;
+      syncUi();
+      renderTrackSelector();
+      renderEffectsMatrix();
+      renderMixer();
+      renderPattern();
+      renderScaleGrid();
+      renderPitchLanes();
+      writeStoredSession();
+    });
+    lane.append(label);
+
+    const keyboard = document.createElement("div");
+    keyboard.className = "pitch-keyboard";
+    keyboard.style.setProperty("--track-color", track.color);
+    keyboard.style.setProperty("--track-color-soft", hexToRgba(track.color, 0.16));
+    keyboard.style.setProperty("--track-color-strong", hexToRgba(track.color, 0.34));
+
+    const activeMidi = Math.max(
+      PITCH_LANE_START_MIDI,
+      Math.min(PITCH_LANE_START_MIDI + PITCH_LANE_NOTE_COUNT - 1, getTrackPitchMidi(track)),
+    );
+    for (let noteIndex = 0; noteIndex < PITCH_LANE_NOTE_COUNT; noteIndex += 1) {
+      const midiNote = PITCH_LANE_START_MIDI + noteIndex;
+      const key = document.createElement("div");
+      key.className = "pitch-key";
+      if (isBlackKey(midiNote)) key.classList.add("is-black");
+      if (getMidiPitchClass(midiNote) === D_ROOT_PITCH_CLASS) key.classList.add("is-root");
+      if (!isMidiNoteInTrackScale(track, midiNote)) key.classList.add("is-out-of-scale");
+      if (midiNote === activeMidi) {
+        key.classList.add("is-active");
+      }
+      key.title = `${NOTE_NAMES[getMidiPitchClass(midiNote)]}${Math.floor(midiNote / 12) - 1}`;
+      keyboard.append(key);
+    }
+
+    lane.append(keyboard);
+    ui.pitchLanes.append(lane);
   });
 }
 
@@ -2368,6 +2506,8 @@ function syncUi() {
     control.classList.add("is-track-active");
     applyTrackColor(control, track.color);
   });
+  renderScaleGrid();
+  renderPitchLanes();
   syncTransportButton();
   syncFilterOverlay();
   syncDelayOverlay();

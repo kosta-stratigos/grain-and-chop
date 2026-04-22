@@ -21,33 +21,166 @@
         </div>
       </header>
 
-      <main class="layout">
-        <section class="panel panel-wide">
+      <main class="layout layout-v2">
+        <section class="panel pane-pitch">
           <div class="panel-head">
             <div class="panel-head-copy">
-              <h2>Sample</h2>
-              <p id="sample-status" class="sample-name"></p>
+              <h2>Pitch</h2>
+              <p>Per-track pitch lanes. Out-of-scale notes dim by the selected D-based scale.</p>
             </div>
-            <button id="sample-browser-toggle" class="primary sample-file-picker" type="button">Load New Sample</button>
-            <input id="sample-input" type="file" accept="audio/*" hidden />
           </div>
-          <canvas id="waveform" width="1200" height="168"></canvas>
-          <canvas id="waveform-overview" width="1200" height="28"></canvas>
-          <div class="region-grid">
-            <label>
-              Start
-              <input id="region-start" type="range" min="0" max="1000" value="0" />
+          <div id="pitch-lanes" class="pitch-lanes"></div>
+        </section>
+
+        <section class="panel pane-scale">
+          <div class="panel-head">
+            <div class="panel-head-copy">
+              <h2>Scale</h2>
+              <p>Each track uses its own scale, all centered on D for now.</p>
+            </div>
+          </div>
+          <div id="scale-grid" class="scale-grid"></div>
+        </section>
+
+        <section class="panel pane-mix">
+          <div class="panel-head">
+            <h2>Mix</h2>
+          </div>
+          <label class="compact-field mix-volume-control">
+            Mix Volume
+            <div class="slider-row">
+              <input id="mix-volume" type="range" min="0" max="100" value="90" />
+              <span id="mix-volume-value" class="value-pill">90%</span>
+            </div>
+          </label>
+          <div id="mixer-grid" class="mixer-grid"></div>
+        </section>
+
+        <section class="panel pane-clock">
+          <div class="panel-head">
+            <h2>Clock</h2>
+          </div>
+          <div class="control-grid micro-control-grid">
+            <label class="compact-field span-2">
+              BPM
+              <div class="slider-row">
+                <input id="bpm" type="range" min="60" max="180" value="112" />
+                <span id="bpm-value" class="value-pill">112</span>
+              </div>
             </label>
-            <label>
-              End
-              <input id="region-end" type="range" min="0" max="1000" value="1000" />
+            <label class="compact-field span-2">
+              Swing
+              <div class="slider-row">
+                <input id="swing" type="range" min="0" max="100" value="0" />
+                <span id="swing-value" class="value-pill">0%</span>
+              </div>
+            </label>
+            <div class="transport-single span-2">
+              <button id="transport-toggle" class="primary">Play</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel pane-sequence">
+          <div class="panel-head">
+            <div class="panel-head-copy">
+              <h2>Sequence</h2>
+              <p>One bar of sequencing space with per-track step counts and playback paths.</p>
+            </div>
+          </div>
+          <div id="pattern-grid" class="pattern-grid"></div>
+        </section>
+
+        <section class="panel pane-sequence-settings">
+          <div class="panel-head">
+            <div class="panel-head-copy">
+              <h2>Sequence Settings</h2>
+              <p>Selected track settings.</p>
+            </div>
+          </div>
+          <div class="sequence-settings-stack">
+            <label class="pattern-rate-control">
+              <span class="pattern-steps-meta">
+                <span>Voice</span>
+              </span>
+              <select id="pattern-voice-select">
+                <option value="0">Voice 1</option>
+                <option value="1">Voice 2</option>
+                <option value="2">Voice 3</option>
+                <option value="3">Voice 4</option>
+              </select>
+            </label>
+            <label class="pattern-rate-control">
+              <span class="pattern-steps-meta">
+                <span>Steps</span>
+                <span id="track-steps-value" class="pattern-steps-value">16</span>
+              </span>
+              <input id="track-steps" type="range" min="1" max="32" value="16" />
+            </label>
+            <label class="pattern-rate-control">
+              <span class="pattern-steps-meta">
+                <span>Playback Mode</span>
+              </span>
+              <select id="track-playback-mode">
+                <option value="forward">Forward</option>
+                <option value="ping-pong">Ping Pong</option>
+                <option value="random">Random</option>
+                <option value="reverse">Reverse</option>
+              </select>
+            </label>
+            <label class="pattern-rate-control">
+              <span class="pattern-steps-meta">
+                <span>Step Probability</span>
+                <span id="track-step-probability-value" class="pattern-steps-value">100%</span>
+              </span>
+              <input id="track-step-probability" type="range" min="0" max="100" value="100" />
             </label>
           </div>
         </section>
 
-        <section class="panel panel-span-2 voice-panel">
+        <section class="panel pane-sequence-fill">
           <div class="panel-head">
-            <h2>Voice Settings</h2>
+            <div class="panel-head-copy">
+              <h2>Sequence Fill</h2>
+              <p>Quick tools for building out the selected track.</p>
+            </div>
+          </div>
+          <div class="sequence-fill-stack">
+            <div class="fill-pattern-control">
+              <label class="fill-density-control">
+                <span class="pattern-steps-meta">
+                  <span>Fill Density</span>
+                  <span id="fill-density-value" class="pattern-steps-value">50%</span>
+                </span>
+                <input id="fill-density" type="range" min="0" max="100" value="50" />
+              </label>
+              <button id="randomize-pattern">Fill Sequence</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel pane-sequence-patterns">
+          <div class="panel-head">
+            <h2>Sequence Patterns</h2>
+          </div>
+          <div class="placeholder-panel">
+            <p>Pattern banks and arrangement tools will live here.</p>
+          </div>
+        </section>
+
+        <section class="panel pane-track-effects">
+          <div class="panel-head">
+            <div class="panel-head-copy">
+              <h2>Track Effects</h2>
+              <p>Click to toggle. Hold for 1s to edit.</p>
+            </div>
+          </div>
+          <div id="effects-matrix" class="effects-matrix"></div>
+        </section>
+
+        <section class="panel pane-voices">
+          <div class="panel-head">
+            <h2>Voices</h2>
           </div>
           <div id="track-selector" class="track-selector"></div>
           <div class="control-stack track-settings-stack">
@@ -149,114 +282,40 @@
           </div>
         </section>
 
-        <section class="panel effects-panel">
+        <section class="panel pane-composer">
           <div class="panel-head">
-            <div class="panel-head-copy">
-              <h2>Effects Matrix</h2>
-              <p>Click to toggle. Hold for 1s to edit.</p>
-            </div>
+            <h2>Composer</h2>
           </div>
-          <div id="effects-matrix" class="effects-matrix"></div>
-        </section>
-
-        <section class="panel mixer-panel">
-          <div class="panel-head">
-            <h2>Output Mix</h2>
+          <div class="placeholder-panel">
+            <p>Composer tools and higher-level note generation will land here.</p>
           </div>
-          <label class="compact-field mix-volume-control">
-            Mix Volume
-            <div class="slider-row">
-              <input id="mix-volume" type="range" min="0" max="100" value="90" />
-              <span id="mix-volume-value" class="value-pill">90%</span>
-            </div>
-          </label>
-          <div id="mixer-grid" class="mixer-grid"></div>
-        </section>
-
-        <section class="panel micro-panel">
-          <div class="panel-head">
-            <div class="panel-head-copy">
-              <h2>Playback Control</h2>
-            </div>
-          </div>
-          <div class="control-grid micro-control-grid">
-            <label class="compact-field span-2">
-              BPM
-              <div class="slider-row">
-                <input id="bpm" type="range" min="60" max="180" value="112" />
-                <span id="bpm-value" class="value-pill">112</span>
-              </div>
-            </label>
-            <label class="compact-field span-2">
-              Swing
-              <div class="slider-row">
-                <input id="swing" type="range" min="0" max="100" value="0" />
-                <span id="swing-value" class="value-pill">0%</span>
-              </div>
-            </label>
-            <div class="transport-single span-2">
-              <button id="transport-toggle" class="primary">Play</button>
-            </div>
-          </div>
-        </section>
-
-        <section class="panel panel-wide">
-          <div class="panel-head panel-head-pattern">
-            <div class="panel-head-copy">
-              <h2>Pattern</h2>
-            </div>
-            <div class="pattern-head-actions">
-              <div class="fill-pattern-control">
-                <label class="fill-density-control">
-                  <span class="pattern-steps-meta">
-                    <span>Fill Density</span>
-                    <span id="fill-density-value" class="pattern-steps-value">50%</span>
-                  </span>
-                  <input id="fill-density" type="range" min="0" max="100" value="50" />
-                </label>
-                <button id="randomize-pattern">Fill Pattern</button>
-              </div>
-              <label class="pattern-rate-control">
-                <span class="pattern-steps-meta">
-                  <span>Voice</span>
-                </span>
-                <select id="pattern-voice-select">
-                  <option value="0">Voice 1</option>
-                  <option value="1">Voice 2</option>
-                  <option value="2">Voice 3</option>
-                  <option value="3">Voice 4</option>
-                </select>
-              </label>
-              <label class="pattern-rate-control">
-                <span class="pattern-steps-meta">
-                  <span>Steps</span>
-                  <span id="track-steps-value" class="pattern-steps-value">16</span>
-                </span>
-                <input id="track-steps" type="range" min="1" max="32" value="16" />
-              </label>
-              <label class="pattern-rate-control">
-                <span class="pattern-steps-meta">
-                  <span>Playback Mode</span>
-                </span>
-                <select id="track-playback-mode">
-                  <option value="forward">Forward</option>
-                  <option value="ping-pong">Ping Pong</option>
-                  <option value="random">Random</option>
-                  <option value="reverse">Reverse</option>
-                </select>
-              </label>
-              <label class="pattern-rate-control">
-                <span class="pattern-steps-meta">
-                  <span>Step Probability</span>
-                  <span id="track-step-probability-value" class="pattern-steps-value">100%</span>
-                </span>
-                <input id="track-step-probability" type="range" min="0" max="100" value="100" />
-              </label>
-            </div>
-          </div>
-          <div id="pattern-grid" class="pattern-grid"></div>
         </section>
       </main>
+
+      <section class="legacy-sample-shell" aria-hidden="true">
+        <section class="panel">
+          <div class="panel-head">
+            <div class="panel-head-copy">
+              <h2>Sample</h2>
+              <p id="sample-status" class="sample-name"></p>
+            </div>
+            <button id="sample-browser-toggle" class="primary sample-file-picker" type="button">Load New Sample</button>
+            <input id="sample-input" type="file" accept="audio/*" hidden />
+          </div>
+          <canvas id="waveform" width="1200" height="168"></canvas>
+          <canvas id="waveform-overview" width="1200" height="28"></canvas>
+          <div class="region-grid">
+            <label>
+              Start
+              <input id="region-start" type="range" min="0" max="1000" value="0" />
+            </label>
+            <label>
+              End
+              <input id="region-end" type="range" min="0" max="1000" value="1000" />
+            </label>
+          </div>
+        </section>
+      </section>
     </div>
 
     <div id="filter-overlay" class="overlay-shell is-hidden" aria-hidden="true">
