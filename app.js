@@ -1205,6 +1205,14 @@ function beginMixerDrag(trackIndex, control) {
 }
 
 function endMixerDrag() {
+  if (ui.mixerGrid && Number.isInteger(state.mixerDragState.trackIndex)) {
+    const strip = ui.mixerGrid.querySelector(`.mixer-strip[data-track-index="${state.mixerDragState.trackIndex}"]`);
+    const track = state.tracks[state.mixerDragState.trackIndex];
+    if (strip instanceof HTMLElement && track) {
+      strip.dataset.displayVolume = String(Math.max(0, Math.min(1, track.volume)));
+      strip.dataset.displayPan = String(clampPan(track.pan));
+    }
+  }
   state.mixerDragState = {
     active: false,
     trackIndex: null,
