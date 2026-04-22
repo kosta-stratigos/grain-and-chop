@@ -1196,26 +1196,21 @@ function bindMasterMixerMeter(meterElement) {
   meterElement.addEventListener("pointerdown", (event) => {
     event.preventDefault();
     setMixVolumeFromMeter(event.clientY, meterElement);
-    meterElement.setPointerCapture(event.pointerId);
 
     const handleMove = (moveEvent) => {
-      if (!meterElement.hasPointerCapture(moveEvent.pointerId)) return;
       moveEvent.preventDefault();
       setMixVolumeFromMeter(moveEvent.clientY, meterElement);
     };
 
-    const handleEnd = (endEvent) => {
-      if (meterElement.hasPointerCapture(endEvent.pointerId)) {
-        meterElement.releasePointerCapture(endEvent.pointerId);
-      }
-      meterElement.removeEventListener("pointermove", handleMove);
-      meterElement.removeEventListener("pointerup", handleEnd);
-      meterElement.removeEventListener("pointercancel", handleEnd);
+    const handleEnd = () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleEnd);
+      window.removeEventListener("pointercancel", handleEnd);
     };
 
-    meterElement.addEventListener("pointermove", handleMove);
-    meterElement.addEventListener("pointerup", handleEnd);
-    meterElement.addEventListener("pointercancel", handleEnd);
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleEnd);
+    window.addEventListener("pointercancel", handleEnd);
   });
 }
 
@@ -1232,26 +1227,21 @@ function bindMixerMeter(meterElement, trackIndex) {
     renderPitchLanes();
     writeStoredSession();
     setTrackVolumeFromMeter(trackIndex, event.clientY, meterElement);
-    meterElement.setPointerCapture(event.pointerId);
 
     const handleMove = (moveEvent) => {
-      if (!meterElement.hasPointerCapture(moveEvent.pointerId)) return;
       moveEvent.preventDefault();
       setTrackVolumeFromMeter(trackIndex, moveEvent.clientY, meterElement);
     };
 
-    const handleEnd = (endEvent) => {
-      if (meterElement.hasPointerCapture(endEvent.pointerId)) {
-        meterElement.releasePointerCapture(endEvent.pointerId);
-      }
-      meterElement.removeEventListener("pointermove", handleMove);
-      meterElement.removeEventListener("pointerup", handleEnd);
-      meterElement.removeEventListener("pointercancel", handleEnd);
+    const handleEnd = () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleEnd);
+      window.removeEventListener("pointercancel", handleEnd);
     };
 
-    meterElement.addEventListener("pointermove", handleMove);
-    meterElement.addEventListener("pointerup", handleEnd);
-    meterElement.addEventListener("pointercancel", handleEnd);
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleEnd);
+    window.addEventListener("pointercancel", handleEnd);
   });
 }
 
@@ -1272,10 +1262,8 @@ function bindMixerPanKnob(knobElement, trackIndex) {
 
     const startY = event.clientY;
     const startPan = clampPan(track.pan);
-    knobElement.setPointerCapture(event.pointerId);
 
     const handleMove = (moveEvent) => {
-      if (!knobElement.hasPointerCapture(moveEvent.pointerId)) return;
       moveEvent.preventDefault();
       const delta = (startY - moveEvent.clientY) / 80;
       track.pan = clampPan(startPan + delta);
@@ -1284,18 +1272,15 @@ function bindMixerPanKnob(knobElement, trackIndex) {
       writeStoredSession();
     };
 
-    const handleEnd = (endEvent) => {
-      if (knobElement.hasPointerCapture(endEvent.pointerId)) {
-        knobElement.releasePointerCapture(endEvent.pointerId);
-      }
-      knobElement.removeEventListener("pointermove", handleMove);
-      knobElement.removeEventListener("pointerup", handleEnd);
-      knobElement.removeEventListener("pointercancel", handleEnd);
+    const handleEnd = () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleEnd);
+      window.removeEventListener("pointercancel", handleEnd);
     };
 
-    knobElement.addEventListener("pointermove", handleMove);
-    knobElement.addEventListener("pointerup", handleEnd);
-    knobElement.addEventListener("pointercancel", handleEnd);
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleEnd);
+    window.addEventListener("pointercancel", handleEnd);
   });
 }
 
@@ -2341,36 +2326,6 @@ function renderTrackSelector() {
 
 function renderMixer() {
   ui.mixerGrid.innerHTML = "";
-
-  const masterStrip = document.createElement("div");
-  masterStrip.className = "mixer-strip master";
-  masterStrip.dataset.mixerKind = "master";
-
-  const masterHead = document.createElement("div");
-  masterHead.className = "mixer-head";
-  masterHead.innerHTML = '<span class="mixer-name">MIX</span>';
-  masterStrip.append(masterHead);
-
-  const masterControls = document.createElement("div");
-  masterControls.className = "mixer-controls";
-
-  const masterValue = document.createElement("span");
-  masterValue.className = "mixer-meter-value";
-  masterValue.dataset.mixerValue = "master-volume";
-  masterValue.textContent = `${Math.round(state.mixVolume * 100)}%`;
-  masterControls.append(masterValue);
-
-  const masterMeter = document.createElement("div");
-  masterMeter.className = "mixer-meter";
-  masterMeter.dataset.mixerRole = "master-volume";
-  masterMeter.style.setProperty("--meter-fill", `${Math.round(state.mixVolume * 100)}%`);
-  masterMeter.innerHTML = '<div class="mixer-meter-fill"></div><div class="mixer-meter-thumb"></div>';
-  bindMasterMixerMeter(masterMeter);
-  masterControls.append(masterMeter);
-
-  masterStrip.append(masterControls);
-  ui.mixerGrid.append(masterStrip);
-
   state.tracks.forEach((track, index) => {
     const strip = document.createElement("div");
     strip.className = `mixer-strip${index === state.selectedTrackIndex ? " active" : ""}`;
@@ -2455,6 +2410,36 @@ function renderMixer() {
     strip.append(controls);
     ui.mixerGrid.append(strip);
   });
+
+  const masterStrip = document.createElement("div");
+  masterStrip.className = "mixer-strip master";
+  masterStrip.dataset.mixerKind = "master";
+
+  const masterHead = document.createElement("div");
+  masterHead.className = "mixer-head";
+  masterHead.innerHTML = '<span class="mixer-name">MAIN</span>';
+  masterStrip.append(masterHead);
+
+  const masterControls = document.createElement("div");
+  masterControls.className = "mixer-controls";
+
+  const masterValue = document.createElement("span");
+  masterValue.className = "mixer-meter-value";
+  masterValue.dataset.mixerValue = "master-volume";
+  masterValue.textContent = `${Math.round(state.mixVolume * 100)}%`;
+  masterControls.append(masterValue);
+
+  const masterMeter = document.createElement("div");
+  masterMeter.className = "mixer-meter";
+  masterMeter.dataset.mixerRole = "master-volume";
+  masterMeter.style.setProperty("--meter-fill", `${Math.round(state.mixVolume * 100)}%`);
+  masterMeter.innerHTML = '<div class="mixer-meter-fill"></div><div class="mixer-meter-thumb"></div>';
+  bindMasterMixerMeter(masterMeter);
+  masterControls.append(masterMeter);
+
+  masterStrip.append(masterControls);
+  ui.mixerGrid.append(masterStrip);
+
   paintMasterMixMeter();
   paintMixerModulation();
   syncMixerSelection();
