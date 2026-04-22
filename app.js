@@ -18,6 +18,7 @@ const ui = {
   fillDensity: document.querySelector("#fill-density"),
   fillDensityValue: document.querySelector("#fill-density-value"),
   trackSelector: document.querySelector("#track-selector"),
+  sampleVoiceSettingsGroup: document.querySelector("#sample-voice-settings-group"),
   sampleSettingsGroup: document.querySelector("#sample-settings-group"),
   voicePlaybackSettingsGroup: document.querySelector("#voice-playback-settings-group"),
   synthSettingsGroup: document.querySelector("#synth-settings-group"),
@@ -2836,8 +2837,10 @@ function syncUi() {
   ui.synthFilterQ.value = String(voice.synthFilterQ);
   ui.synthFilterQValue.textContent = voice.synthFilterQ.toFixed(1);
   const synthMode = voice.mode === "synth";
-  ui.sampleSettingsGroup.classList.toggle("ui-hidden", synthMode);
-  ui.voicePlaybackSettingsGroup.classList.toggle("ui-hidden", synthMode);
+  const sampleVoiceModeLabel = voice.mode === "chop" ? "Chop" : "Grain";
+  const sampleVoiceTitle = document.querySelector("#sample-voice-group-title");
+  if (sampleVoiceTitle instanceof HTMLElement) sampleVoiceTitle.textContent = sampleVoiceModeLabel;
+  ui.sampleVoiceSettingsGroup.classList.toggle("ui-hidden", synthMode);
   ui.synthSettingsGroup.classList.toggle("ui-hidden", !synthMode);
   ui.bpm.value = String(state.bpm);
   ui.bpmValue.textContent = String(state.bpm);

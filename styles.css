@@ -629,12 +629,18 @@ h2 {
 }
 
 .voice-type-control,
-.synth-settings-group {
+.synth-settings-group,
+.sample-voice-settings-group {
   margin-bottom: 10px;
 }
 
-.synth-settings-group {
+.synth-settings-group,
+.sample-voice-settings-group {
   grid-column: 1 / -1;
+}
+
+.nested-control-group {
+  margin: 0;
 }
 
 .rotary-row {
