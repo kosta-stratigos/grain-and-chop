@@ -1341,14 +1341,18 @@ function isMidiNoteInTrackScale(track, midiNote) {
 function getTrackModulationValues(track, timeSeconds = 0) {
   const drift = getTrackDrift(track);
   const swell = getTrackSwell(track);
-  const driftPhase = drift.enabled ? Math.sin((timeSeconds / Math.max(0.001, clampLfoRateMs(drift.rate, 1500) / 1000)) * Math.PI * 2) : 0;
-  const swellPhase = swell.enabled ? Math.sin((timeSeconds / Math.max(0.001, clampLfoRateMs(swell.rate, 1800) / 1000)) * Math.PI * 2) : 0;
-  const driftNormalized = (driftPhase + 1) / 2;
-  const swellNormalized = (swellPhase + 1) / 2;
+  const driftPhase = drift.enabled ? Math.sin((timeSeconds / Math.max(0.001, clampLfoRateMs(drift.rate, 1500) / 1000)) * Math.PI * 2) : null;
+  const swellPhase = swell.enabled ? Math.sin((timeSeconds / Math.max(0.001, clampLfoRateMs(swell.rate, 1800) / 1000)) * Math.PI * 2) : null;
+  const driftNormalized = driftPhase === null ? null : (driftPhase + 1) / 2;
+  const swellNormalized = swellPhase === null ? null : (swellPhase + 1) / 2;
 
   return {
-    pan: clampPan((drift.rangeMin + (drift.rangeMax - drift.rangeMin) * driftNormalized) / 100),
-    volume: Math.max(0, Math.min(1, (swell.rangeMin + (swell.rangeMax - swell.rangeMin) * swellNormalized) / 100)),
+    pan: drift.enabled
+      ? clampPan((drift.rangeMin + (drift.rangeMax - drift.rangeMin) * driftNormalized) / 100)
+      : clampPan(track.pan),
+    volume: swell.enabled
+      ? Math.max(0, Math.min(1, (swell.rangeMin + (swell.rangeMax - swell.rangeMin) * swellNormalized) / 100))
+      : Math.max(0, Math.min(1, track.volume)),
   };
 }
 
@@ -1372,8 +1376,8 @@ function paintMixerModulation() {
       : transportRunning
       ? getTrackModulationValues(track, timeSeconds)
       : {
-        pan: Number.isFinite(previousPan) ? previousPan : clampPan(track.pan),
-        volume: Number.isFinite(previousVolume) ? previousVolume : Math.max(0, Math.min(1, track.volume)),
+        pan: clampPan(track.pan),
+        volume: Math.max(0, Math.min(1, track.volume)),
     };
     strip.dataset.displayVolume = String(modulation.volume);
     strip.dataset.displayPan = String(modulation.pan);
