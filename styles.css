@@ -319,25 +319,26 @@ h2 {
 
 .pitch-lane {
   display: grid;
-  grid-template-columns: 56px minmax(0, 1fr) 152px;
+  grid-template-columns: 92px minmax(0, 1fr) 152px;
   gap: 6px;
   align-items: center;
 }
 
 .pitch-lane-label {
-  min-height: 40px;
+  min-height: 46px;
   display: grid;
   align-items: center;
-  padding: 0 8px;
+  padding: 0 10px;
   border-radius: var(--pane-radius);
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.03);
   color: var(--text);
-  font-size: 0.7rem;
+  font-size: 0.78rem;
   font-weight: 600;
   font-family: var(--font-display);
   letter-spacing: 0.04em;
   text-transform: uppercase;
+  justify-items: start;
 }
 
 .pitch-lane-label.active {
@@ -409,6 +410,10 @@ h2 {
   margin-bottom: 8px;
 }
 
+.ui-hidden {
+  display: none;
+}
+
 .mixer-strip {
   display: grid;
   justify-items: center;
@@ -423,6 +428,10 @@ h2 {
 .mixer-strip.active {
   border-color: var(--track-color-strong);
   background: var(--track-color-soft);
+}
+
+.mixer-strip.master {
+  background: rgba(255, 255, 255, 0.02);
 }
 
 .mixer-head {
@@ -486,6 +495,7 @@ h2 {
     rgba(255, 255, 255, 0.04);
   overflow: hidden;
   cursor: ns-resize;
+  touch-action: none;
 }
 
 .mixer-meter-fill {
@@ -521,6 +531,7 @@ h2 {
     radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.14), transparent 32%),
     rgba(255, 255, 255, 0.05);
   cursor: ns-resize;
+  touch-action: none;
 }
 
 .mixer-pan-knob:hover {
