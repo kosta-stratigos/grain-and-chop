@@ -421,7 +421,7 @@ h2 {
 }
 
 .ui-hidden {
-  display: none;
+  display: none !important;
 }
 
 .mixer-strip {

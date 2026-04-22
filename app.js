@@ -488,15 +488,15 @@ class PlaybackLayer {
     const delay = track.effects.delay;
     const drift = track.effects.drift;
     const swell = track.effects.swell;
-    const driftCenter = (drift.rangeMin + drift.rangeMax) / 200;
-    const swellCenter = (swell.rangeMin + swell.rangeMax) / 200;
+    const driftCenter = clampPan(track.pan);
+    const swellCenter = Math.max(0, Math.min(1, track.volume));
     const driftAmplitude = drift.enabled ? Math.abs(drift.rangeMax - drift.rangeMin) / 200 : 0;
     const swellAmplitude = swell.enabled ? Math.abs(swell.rangeMax - swell.rangeMin) / 200 : 0;
     const driftFrequency = 1 / (clampLfoRateMs(drift.rate, 1500) / 1000);
     const swellFrequency = 1 / (clampLfoRateMs(swell.rate, 1800) / 1000);
 
-    outputGain.gain.value = 0;
-    panNode.pan.value = 0;
+    outputGain.gain.value = swellCenter;
+    panNode.pan.value = driftCenter;
     panCenter.offset.setValueAtTime(driftCenter, this.audioContext.currentTime);
     panLfo.frequency.setValueAtTime(driftFrequency, this.audioContext.currentTime);
     panLfoDepth.gain.setValueAtTime(driftAmplitude, this.audioContext.currentTime);
