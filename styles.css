@@ -651,11 +651,20 @@ h2 {
   justify-content: start;
 }
 
+.rotary-field {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+  align-content: start;
+}
+
 .voice-rotary {
   position: relative;
-  width: 34px;
-  height: 34px;
-  min-height: 34px;
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
   padding: 0;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -674,13 +683,13 @@ h2 {
   content: "";
   position: absolute;
   left: 50%;
-  top: 5px;
+  top: 4px;
   width: 2px;
-  height: 10px;
+  height: 8px;
   margin-left: -1px;
   border-radius: 999px;
   background: var(--text);
-  transform-origin: 50% 12px;
+  transform-origin: 50% 10px;
   transform: rotate(var(--rotary-angle, -135deg));
 }
 
