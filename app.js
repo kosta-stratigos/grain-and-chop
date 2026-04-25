@@ -792,14 +792,14 @@ class PlaybackLayer {
     return true;
   }
 
-  triggerTrack(track, when = this.audioContext.currentTime, sliceIndex = null, noteDuration = null) {
+  triggerTrack(track, when = this.audioContext.currentTime, sliceIndex = null, noteDuration = null, pitchOverride = null) {
     const playbackTrack = getTrackPlaybackSettings(track);
     if (playbackTrack.mode === "synth") {
       return this.triggerSynth(
         {
           trackIndex: playbackTrack.trackIndex,
           wave: playbackTrack.synthWave,
-          tuneMidi: playbackTrack.synthTuneMidi,
+          tuneMidi: pitchOverride?.pitchMidi ?? playbackTrack.synthTuneMidi,
           noiseMix: playbackTrack.synthNoiseMix,
           filterType: playbackTrack.synthFilterType,
           filterFrequency: playbackTrack.synthFilterFrequency,
@@ -816,7 +816,7 @@ class PlaybackLayer {
           grainSizeMs: playbackTrack.grainSize,
           density: playbackTrack.grainDensity,
           spray: playbackTrack.spray / 100,
-          pitch: playbackTrack.pitch,
+          pitch: pitchOverride?.pitchSemitones ?? playbackTrack.pitch,
           reverse: playbackTrack.reverse,
           level: 1,
           sliceCount: playbackTrack.sliceCount,
@@ -829,7 +829,15 @@ class PlaybackLayer {
         noteDuration,
       );
     }
-    return this.triggerSlice(playbackTrack, when, sliceIndex, noteDuration);
+    return this.triggerSlice(
+      {
+        ...playbackTrack,
+        pitch: pitchOverride?.pitchSemitones ?? playbackTrack.pitch,
+      },
+      when,
+      sliceIndex,
+      noteDuration,
+    );
   }
 }
 
@@ -873,13 +881,18 @@ class TransportLayer {
     this.state.tracks.forEach((track) => {
       if (!shouldAdvanceTrackStep(track, stepIndex)) return;
       const cellIndex = resolveTrackPatternStep(track, { advance: true });
+      const playbackState = this.state.trackPlaybackState[track.id - 1];
+      if (playbackState) playbackState.lastTriggeredPatternIndex = -1;
       if (!track.pattern[cellIndex]) return;
       if (Math.random() * 100 > track.stepProbability) return;
       if (!isTrackAudible(track)) return;
       const sliceIndex = resolvePlaybackSliceIndex(track, { advance: true });
       const noteDuration = getTrackTriggerDuration(track);
+      const pitchMidi = getTrackStepPitchMidi(track, cellIndex);
+      const pitchSemitones = pitchMidi - PITCH_LANE_REFERENCE_MIDI;
+      if (playbackState) playbackState.lastTriggeredPatternIndex = cellIndex;
       indicateTrackPlayback(track, sliceIndex);
-      this.playbackLayer.triggerTrack(track, when, sliceIndex, noteDuration);
+      this.playbackLayer.triggerTrack(track, when, sliceIndex, noteDuration, { pitchMidi, pitchSemitones });
     });
     if (this.onStep) this.onStep(stepIndex);
   }
@@ -926,6 +939,7 @@ function createTrack(id) {
     playbackMode: "forward",
     stepProbability: 100,
     stepFill: createDefaultStepFillSettings(),
+    stepPitches: Array.from({ length: MAX_PATTERN_CELLS }, () => null),
     pattern: Array.from({ length: MAX_PATTERN_CELLS }, (_, index) => (index + id - 1) % 4 === 0),
   };
 }
@@ -1011,6 +1025,10 @@ const state = {
     open: false,
     trackIndex: 0,
   },
+  pitchStepSelection: {
+    trackIndex: null,
+    cellIndex: null,
+  },
   currentSampleName: "",
   mixVolume: 0.9,
 };
@@ -1040,6 +1058,7 @@ function createTrackPlaybackState(track = createTrack(1)) {
     patternIndex: track.playbackMode === "reverse" ? Math.max(0, visibleCellCount - 1) : 0,
     patternDirection: track.playbackMode === "reverse" ? -1 : 1,
     lastPatternIndex: -1,
+    lastTriggeredPatternIndex: -1,
     lastScheduledSlot: -1,
   };
 }
@@ -1088,6 +1107,10 @@ function normalizeTrack(index, source = {}) {
       Math.min(100, Number.isFinite(Number(source.stepProbability)) ? Number(source.stepProbability) : fallback.stepProbability),
     ),
     stepFill: normalizeStepFillSettings(source.stepFill ?? fallback.stepFill, fallback.stepFill),
+    stepPitches: Array.from({ length: MAX_PATTERN_CELLS }, (_, step) => {
+      const value = source.stepPitches?.[step];
+      return value == null ? null : clampMidiNote(value, PITCH_LANE_REFERENCE_MIDI);
+    }),
     pattern: Array.from({ length: MAX_PATTERN_CELLS }, (_, step) => Boolean(source.pattern?.[step] ?? fallback.pattern[step])),
   };
 }
@@ -1169,6 +1192,7 @@ function writeStoredSession() {
       playbackMode: track.playbackMode,
       stepProbability: track.stepProbability,
       stepFill: { ...track.stepFill },
+      stepPitches: track.stepPitches.slice(0, MAX_PATTERN_CELLS),
       pattern: track.pattern.slice(0, MAX_PATTERN_CELLS),
     })),
   };
@@ -1520,6 +1544,19 @@ function getTrackPitchMidi(track) {
   return PITCH_LANE_REFERENCE_MIDI + voice.pitch;
 }
 
+function getTrackStepPitchMidi(track, cellIndex = null) {
+  if (!Number.isInteger(cellIndex) || cellIndex < 0) return getTrackPitchMidi(track);
+  const stepPitch = track.stepPitches?.[cellIndex];
+  return stepPitch == null ? getTrackPitchMidi(track) : clampMidiNote(stepPitch, getTrackPitchMidi(track));
+}
+
+function getTrackPlaybackHighlightMidi(track) {
+  const playbackState = state.trackPlaybackState[track.id - 1];
+  const triggeredIndex = playbackState?.lastTriggeredPatternIndex;
+  if (!Number.isInteger(triggeredIndex) || triggeredIndex < 0) return getTrackPitchMidi(track);
+  return getTrackStepPitchMidi(track, triggeredIndex);
+}
+
 function isMidiNoteInTrackScale(track, midiNote) {
   const scale = getScaleDefinition(track.scaleMode);
   if (scale.value === "chromatic") return true;
@@ -1615,6 +1652,22 @@ function paintMasterMixMeter() {
   if (value instanceof HTMLElement) {
     value.textContent = `${Math.round(state.mixVolume * 100)}%`;
   }
+}
+
+function updatePitchPlaybackHighlights() {
+  if (!ui.pitchLanes) return;
+  ui.pitchLanes.querySelectorAll(".pitch-key").forEach((key) => {
+    if (!(key instanceof HTMLElement)) return;
+    const trackIndex = Number(key.dataset.trackIndex);
+    const midiNote = Number(key.dataset.midiNote);
+    const track = state.tracks[trackIndex];
+    if (!track || !Number.isFinite(midiNote)) return;
+    const activeMidi = Math.max(
+      PITCH_LANE_START_MIDI,
+      Math.min(PITCH_LANE_START_MIDI + PITCH_LANE_NOTE_COUNT - 1, getTrackPlaybackHighlightMidi(track)),
+    );
+    key.classList.toggle("is-active", midiNote === activeMidi);
+  });
 }
 
 function animateMixerModulation() {
@@ -1715,11 +1768,13 @@ function renderPitchLanes() {
 
     const activeMidi = Math.max(
       PITCH_LANE_START_MIDI,
-      Math.min(PITCH_LANE_START_MIDI + PITCH_LANE_NOTE_COUNT - 1, getTrackPitchMidi(track)),
+      Math.min(PITCH_LANE_START_MIDI + PITCH_LANE_NOTE_COUNT - 1, getTrackPlaybackHighlightMidi(track)),
     );
+    const selectedPitchCell = state.pitchStepSelection.trackIndex === index ? state.pitchStepSelection.cellIndex : null;
     for (let noteIndex = 0; noteIndex < PITCH_LANE_NOTE_COUNT; noteIndex += 1) {
       const midiNote = PITCH_LANE_START_MIDI + noteIndex;
-      const key = document.createElement("div");
+      const key = document.createElement("button");
+      key.type = "button";
       key.className = "pitch-key";
       if (isBlackKey(midiNote)) key.classList.add("is-black");
       if (getMidiPitchClass(midiNote) === D_ROOT_PITCH_CLASS) key.classList.add("is-root");
@@ -1729,7 +1784,25 @@ function renderPitchLanes() {
       if (midiNote === activeMidi) {
         key.classList.add("is-active");
       }
+      if (selectedPitchCell != null && midiNote === getTrackStepPitchMidi(track, selectedPitchCell)) {
+        key.classList.add("is-pitch-target");
+      }
+      key.dataset.trackIndex = String(index);
+      key.dataset.midiNote = String(midiNote);
       key.title = `${NOTE_NAMES[getMidiPitchClass(midiNote)]}${Math.floor(midiNote / 12) - 1}`;
+      key.addEventListener("click", () => {
+        state.selectedTrackIndex = index;
+        if (selectedPitchCell != null) {
+          track.stepPitches[selectedPitchCell] = midiNote;
+        }
+        syncUi();
+        renderTrackSelector();
+        renderEffectsMatrix();
+        renderMixer();
+        renderPattern();
+        drawWaveform();
+        writeStoredSession();
+      });
       keyboard.append(key);
     }
 
@@ -2638,6 +2711,7 @@ function updateCurrentStep(activeStep = -1) {
     const currentIndex = state.trackPlaybackState[trackIndex]?.lastPatternIndex ?? -1;
     button.classList.toggle("current", cellIndex === currentIndex);
   });
+  updatePitchPlaybackHighlights();
 }
 
 function renderTrackSelector() {
@@ -2904,15 +2978,36 @@ function renderPattern(activeStep = -1) {
 
     track.pattern.slice(0, visibleCellCount).forEach((enabled, cellIndex) => {
       const stepButton = document.createElement("button");
-      stepButton.className = `step${enabled ? " active" : ""}`;
+      const pitchSelected = state.pitchStepSelection.trackIndex === trackIndex && state.pitchStepSelection.cellIndex === cellIndex;
+      stepButton.className = `step${enabled ? " active" : ""}${pitchSelected ? " pitch-target" : ""}`;
       applyTrackColor(stepButton, track.color);
       stepButton.dataset.trackIndex = String(trackIndex);
       stepButton.dataset.cellIndex = String(cellIndex);
       if (cellIndex > 0 && cellIndex % Math.max(1, track.stepCount) === 0) stepButton.classList.add("bar-start");
       stepButton.textContent = String(cellIndex + 1);
-      stepButton.addEventListener("click", () => {
+      stepButton.addEventListener("click", (event) => {
         state.selectedTrackIndex = trackIndex;
+        if (event.shiftKey && track.pattern[cellIndex]) {
+          state.pitchStepSelection = { trackIndex, cellIndex };
+          syncUi();
+          renderTrackSelector();
+          renderEffectsMatrix();
+          renderMixer();
+          renderPattern(activeStep);
+          drawWaveform();
+          writeStoredSession();
+          return;
+        }
+        if (!event.shiftKey && state.pitchStepSelection.trackIndex === trackIndex && state.pitchStepSelection.cellIndex === cellIndex) {
+          state.pitchStepSelection = { trackIndex: null, cellIndex: null };
+        }
         track.pattern[cellIndex] = !track.pattern[cellIndex];
+        if (!track.pattern[cellIndex]) {
+          track.stepPitches[cellIndex] = null;
+          if (state.pitchStepSelection.trackIndex === trackIndex && state.pitchStepSelection.cellIndex === cellIndex) {
+            state.pitchStepSelection = { trackIndex: null, cellIndex: null };
+          }
+        }
         stepButton.classList.toggle("active", track.pattern[cellIndex]);
         syncUi();
         renderEffectsMatrix();
