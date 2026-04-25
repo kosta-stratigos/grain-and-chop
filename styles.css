@@ -1024,11 +1024,6 @@ input[type="range"]::-moz-range-thumb {
   margin-top: 6px;
 }
 
-.track-step-fill-group button {
-  margin-top: 12px;
-  min-height: 34px;
-}
-
 .overlay-range-inputs {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

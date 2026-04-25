@@ -103,7 +103,6 @@ const ui = {
   trackStepFillType: document.querySelector("#track-step-fill-type"),
   trackStepFillAmount: document.querySelector("#track-step-fill-amount"),
   trackStepFillAmountValue: document.querySelector("#track-step-fill-amount-value"),
-  applyTrackStepFill: document.querySelector("#apply-track-step-fill"),
   transportToggle: document.querySelector("#transport-toggle"),
   mixVolume: document.querySelector("#mix-volume"),
   mixVolumeValue: document.querySelector("#mix-volume-value"),
@@ -2124,13 +2123,6 @@ function buildTrackFillPattern(track) {
   return nextPattern;
 }
 
-function applySelectedTrackStepFill() {
-  const track = getSelectedTrack();
-  track.pattern = buildTrackFillPattern(track);
-  renderPattern();
-  writeStoredSession();
-}
-
 function openSampleBrowser() {
   state.sampleBrowserOpen = true;
   syncSampleBrowserOverlay();
@@ -2995,6 +2987,10 @@ function syncUi() {
 function updateSelectedTrack(patch) {
   Object.assign(getSelectedTrack(), patch);
   if ("stepCount" in patch || "playbackMode" in patch || "voiceIndex" in patch) resetTrackPlaybackState(state.selectedTrackIndex);
+  if ("stepFill" in patch) {
+    getSelectedTrack().pattern = buildTrackFillPattern(getSelectedTrack());
+    resetTrackPlaybackState(state.selectedTrackIndex);
+  }
   state.playback?.updateTrackBus(state.selectedTrackIndex, getSelectedTrack());
   syncUi();
   renderTrackSelector();
@@ -3185,7 +3181,6 @@ ui.trackStepFillAmount.addEventListener("input", () => {
     }, getSelectedTrack().stepFill),
   });
 });
-ui.applyTrackStepFill.addEventListener("click", () => applySelectedTrackStepFill());
 ui.trackSettingsClose.addEventListener("click", () => closeTrackSettingsOverlay());
 ui.trackSettingsOverlay.addEventListener("click", (event) => {
   if (!(event.target instanceof HTMLElement)) return;
