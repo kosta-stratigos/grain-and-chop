@@ -511,19 +511,23 @@ class PlaybackLayer {
     const delay = track.effects.delay;
     const drift = track.effects.drift;
     const swell = track.effects.swell;
-    const driftCenter = clampPan(track.pan);
-    const swellCenter = Math.max(0, Math.min(1, track.volume));
+    const driftCenter = drift.enabled
+      ? clampPan(((drift.rangeMin + drift.rangeMax) / 2) / 100)
+      : clampPan(track.pan);
     const driftAmplitude = drift.enabled ? Math.abs(drift.rangeMax - drift.rangeMin) / 200 : 0;
+    const swellCenterValue = swell.enabled
+      ? Math.max(0, Math.min(1, ((swell.rangeMin + swell.rangeMax) / 2) / 100))
+      : Math.max(0, Math.min(1, track.volume));
     const swellAmplitude = swell.enabled ? Math.abs(swell.rangeMax - swell.rangeMin) / 200 : 0;
     const driftFrequency = 1 / (clampLfoRateMs(drift.rate, 1500) / 1000);
     const swellFrequency = 1 / (clampLfoRateMs(swell.rate, 1800) / 1000);
 
-    outputGain.gain.value = swellCenter;
+    outputGain.gain.value = swellCenterValue;
     panNode.pan.value = driftCenter;
     panCenter.offset.setValueAtTime(driftCenter, this.audioContext.currentTime);
     panLfo.frequency.setValueAtTime(driftFrequency, this.audioContext.currentTime);
     panLfoDepth.gain.setValueAtTime(driftAmplitude, this.audioContext.currentTime);
-    gainCenter.offset.setValueAtTime(swellCenter, this.audioContext.currentTime);
+    gainCenter.offset.setValueAtTime(swellCenterValue, this.audioContext.currentTime);
     gainLfo.frequency.setValueAtTime(swellFrequency, this.audioContext.currentTime);
     gainLfoDepth.gain.setValueAtTime(swellAmplitude, this.audioContext.currentTime);
 
@@ -1719,7 +1723,9 @@ function renderPitchLanes() {
       key.className = "pitch-key";
       if (isBlackKey(midiNote)) key.classList.add("is-black");
       if (getMidiPitchClass(midiNote) === D_ROOT_PITCH_CLASS) key.classList.add("is-root");
-      if (!isMidiNoteInTrackScale(track, midiNote)) key.classList.add("is-out-of-scale");
+      if (track.scaleMode !== "chromatic" && isMidiNoteInTrackScale(track, midiNote)) {
+        key.classList.add("is-in-scale");
+      }
       if (midiNote === activeMidi) {
         key.classList.add("is-active");
       }
@@ -2902,6 +2908,7 @@ function renderPattern(activeStep = -1) {
       applyTrackColor(stepButton, track.color);
       stepButton.dataset.trackIndex = String(trackIndex);
       stepButton.dataset.cellIndex = String(cellIndex);
+      if (cellIndex > 0 && cellIndex % Math.max(1, track.stepCount) === 0) stepButton.classList.add("bar-start");
       stepButton.textContent = String(cellIndex + 1);
       stepButton.addEventListener("click", () => {
         state.selectedTrackIndex = trackIndex;
