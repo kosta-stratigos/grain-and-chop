@@ -178,17 +178,7 @@ button.primary,
 }
 
 .pane-sequence {
-  grid-column: 1 / span 4;
-  grid-row: 2;
-}
-
-.pane-sequence-settings {
-  grid-column: 5;
-  grid-row: 2;
-}
-
-.pane-sequence-fill {
-  grid-column: 6;
+  grid-column: 1 / span 6;
   grid-row: 2;
 }
 
@@ -1026,6 +1016,19 @@ input[type="range"]::-moz-range-thumb {
   gap: 14px;
 }
 
+.track-settings-overlay-group {
+  padding: 14px;
+}
+
+.track-step-fill-group {
+  margin-top: 6px;
+}
+
+.track-step-fill-group button {
+  margin-top: 12px;
+  min-height: 34px;
+}
+
 .overlay-range-inputs {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1231,20 +1234,7 @@ input[type="range"]::-moz-range-thumb {
   text-transform: uppercase;
 }
 
-.pattern-rate-control {
-  display: grid;
-  gap: 6px;
-  padding: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: var(--pane-radius);
-  background: rgba(255, 255, 255, 0.03);
-  color: var(--muted);
-  font-size: 0.78rem;
-  min-width: 148px;
-}
-
-.sequence-settings-stack .compact-field,
-.sequence-fill-stack .fill-pattern-control {
+.sequence-settings-stack .compact-field {
   min-width: 0;
 }
 
@@ -1380,8 +1370,6 @@ input[type="range"]::-moz-range-thumb {
   .pane-mix,
   .pane-clock,
   .pane-sequence,
-  .pane-sequence-settings,
-  .pane-sequence-fill,
   .pane-sequence-patterns,
   .pane-track-effects,
   .pane-voices,

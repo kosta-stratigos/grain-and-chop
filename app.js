@@ -14,16 +14,16 @@ const ui = {
   regionEnd: document.querySelector("#region-end"),
   sliceCount: document.querySelector("#slice-count"),
   sliceCountValue: document.querySelector("#slice-count-value"),
-  randomizePattern: document.querySelector("#randomize-pattern"),
-  fillDensity: document.querySelector("#fill-density"),
-  fillDensityValue: document.querySelector("#fill-density-value"),
   trackSelector: document.querySelector("#track-selector"),
   sampleVoiceSettingsGroup: document.querySelector("#sample-voice-settings-group"),
   sampleSettingsGroup: document.querySelector("#sample-settings-group"),
   voicePlaybackSettingsGroup: document.querySelector("#voice-playback-settings-group"),
   synthSettingsGroup: document.querySelector("#synth-settings-group"),
-  sequenceSettingsGroup: document.querySelector("#sequence-settings-group"),
   pitchLanes: document.querySelector("#pitch-lanes"),
+  trackSettingsOverlay: document.querySelector("#track-settings-overlay"),
+  trackSettingsGroup: document.querySelector("#track-settings-group"),
+  trackSettingsTrack: document.querySelector("#track-settings-track"),
+  trackSettingsClose: document.querySelector("#track-settings-close"),
   patternVoiceSelect: document.querySelector("#pattern-voice-select"),
   mode: document.querySelector("#mode"),
   grainLocation: document.querySelector("#grain-location"),
@@ -100,6 +100,10 @@ const ui = {
   trackPlaybackMode: document.querySelector("#track-playback-mode"),
   trackStepProbability: document.querySelector("#track-step-probability"),
   trackStepProbabilityValue: document.querySelector("#track-step-probability-value"),
+  trackStepFillType: document.querySelector("#track-step-fill-type"),
+  trackStepFillAmount: document.querySelector("#track-step-fill-amount"),
+  trackStepFillAmountValue: document.querySelector("#track-step-fill-amount-value"),
+  applyTrackStepFill: document.querySelector("#apply-track-step-fill"),
   transportToggle: document.querySelector("#transport-toggle"),
   mixVolume: document.querySelector("#mix-volume"),
   mixVolumeValue: document.querySelector("#mix-volume-value"),
@@ -115,8 +119,10 @@ const SAMPLE_LIBRARY = [
   { name: "orthodox_priest_singing_1_r8j.wav", url: "./samples/orthodox_priest_singing_1_r8j.wav" },
   { name: "95721__elankford__pump-organ-mid-c.wav", url: "./samples/95721__elankford__pump-organ-mid-c.wav" },
 ];
-const BASE_GRID_STEPS = 32;
-const MAX_PATTERN_CELLS = 32;
+const SEQUENCE_BAR_COUNT = 2;
+const STEPS_PER_BAR_MAX = 32;
+const BASE_GRID_STEPS = 32 * SEQUENCE_BAR_COUNT;
+const MAX_PATTERN_CELLS = STEPS_PER_BAR_MAX * SEQUENCE_BAR_COUNT;
 const TRACK_COUNT = 4;
 const PITCH_LANE_NOTE_COUNT = 48;
 const PITCH_LANE_START_MIDI = 38;
@@ -126,6 +132,7 @@ const TRACK_COLORS = ["#59d0ff", "#ff8f5a", "#8dff7a", "#ffd34d"];
 const EFFECT_KEYS = ["filter", "delay", "drift", "swell"];
 const FILTER_TYPES = ["lowpass", "bandpass", "highpass"];
 const TRACK_PLAYBACK_MODES = ["forward", "ping-pong", "random", "reverse"];
+const TRACK_STEP_FILL_TYPES = ["none", "even", "random"];
 const SYNTH_WAVES = ["sine", "triangle", "sawtooth", "square"];
 const SCALE_OPTIONS = [
   { value: "chromatic", label: "Chromatic", intervals: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] },
@@ -254,6 +261,13 @@ function createDefaultSwellSettings() {
   };
 }
 
+function createDefaultStepFillSettings() {
+  return {
+    type: "none",
+    amount: 0,
+  };
+}
+
 function normalizeFilterSettings(source = {}, fallback = createDefaultFilterSettings()) {
   return {
     enabled: Boolean(source.enabled),
@@ -261,6 +275,15 @@ function normalizeFilterSettings(source = {}, fallback = createDefaultFilterSett
     frequency: clampFilterFrequency(source.frequency ?? fallback.frequency),
     q: clampFilterQ(source.q ?? fallback.q),
   };
+}
+
+function normalizeStepFillSettings(source = {}, fallback = createDefaultStepFillSettings()) {
+  const type = TRACK_STEP_FILL_TYPES.includes(source.type) ? source.type : fallback.type;
+  const amountSource = Number.isFinite(Number(source.amount)) ? Number(source.amount) : fallback.amount;
+  const amount = type === "none"
+    ? 0
+    : Math.max(0, Math.min(100, amountSource));
+  return { type, amount };
 }
 
 function normalizeDelaySettings(source = {}, fallback = createDefaultDelaySettings()) {
@@ -899,6 +922,7 @@ function createTrack(id) {
     stepCount: 16,
     playbackMode: "forward",
     stepProbability: 100,
+    stepFill: createDefaultStepFillSettings(),
     pattern: Array.from({ length: MAX_PATTERN_CELLS }, (_, index) => (index + id - 1) % 4 === 0),
   };
 }
@@ -980,8 +1004,11 @@ const state = {
     trackIndex: null,
     control: null,
   },
+  trackSettingsOverlay: {
+    open: false,
+    trackIndex: 0,
+  },
   currentSampleName: "",
-  fillDensity: 50,
   mixVolume: 0.9,
 };
 
@@ -1002,11 +1029,12 @@ function hasAnySampleBasedTracks() {
 }
 
 function createTrackPlaybackState(track = createTrack(1)) {
+  const visibleCellCount = getTrackVisibleCellCount(track);
   return {
     sequentialIndex: 0,
     sweepIndex: 0,
     sweepDirection: 1,
-    patternIndex: track.playbackMode === "reverse" ? Math.max(0, track.stepCount - 1) : 0,
+    patternIndex: track.playbackMode === "reverse" ? Math.max(0, visibleCellCount - 1) : 0,
     patternDirection: track.playbackMode === "reverse" ? -1 : 1,
     lastPatternIndex: -1,
     lastScheduledSlot: -1,
@@ -1052,7 +1080,11 @@ function normalizeTrack(index, source = {}) {
     },
     stepCount: Math.max(1, Math.min(32, Number(source.stepCount) || fallback.stepCount)),
     playbackMode: TRACK_PLAYBACK_MODES.includes(source.playbackMode) ? source.playbackMode : fallback.playbackMode,
-    stepProbability: Math.max(0, Math.min(100, Number(source.stepProbability) || fallback.stepProbability)),
+    stepProbability: Math.max(
+      0,
+      Math.min(100, Number.isFinite(Number(source.stepProbability)) ? Number(source.stepProbability) : fallback.stepProbability),
+    ),
+    stepFill: normalizeStepFillSettings(source.stepFill ?? fallback.stepFill, fallback.stepFill),
     pattern: Array.from({ length: MAX_PATTERN_CELLS }, (_, step) => Boolean(source.pattern?.[step] ?? fallback.pattern[step])),
   };
 }
@@ -1089,7 +1121,6 @@ function writeStoredSession() {
     steps: state.steps,
     selectedTrackIndex: state.selectedTrackIndex,
     selectedVoiceIndex: state.selectedVoiceIndex,
-    fillDensity: state.fillDensity,
     mixVolume: state.mixVolume,
     sample: {
       regionStart: state.sample.regionStart,
@@ -1134,6 +1165,7 @@ function writeStoredSession() {
       stepCount: track.stepCount,
       playbackMode: track.playbackMode,
       stepProbability: track.stepProbability,
+      stepFill: { ...track.stepFill },
       pattern: track.pattern.slice(0, MAX_PATTERN_CELLS),
     })),
   };
@@ -1158,7 +1190,6 @@ function applyStoredSession() {
   state.selectedVoiceIndex = Number.isFinite(stored.selectedVoiceIndex)
     ? Math.max(0, Math.min(TRACK_COUNT - 1, stored.selectedVoiceIndex))
     : 0;
-  state.fillDensity = Number.isFinite(stored.fillDensity) ? Math.max(0, Math.min(100, stored.fillDensity)) : state.fillDensity;
   state.mixVolume = Number.isFinite(stored.mixVolume) ? Math.max(0, Math.min(1, stored.mixVolume)) : state.mixVolume;
 
   if (stored.sample) {
@@ -1744,11 +1775,13 @@ function formatFilterQ(value) {
 }
 
 function getTrackVisibleCellCount(track) {
-  return Math.max(1, Math.min(MAX_PATTERN_CELLS, track.stepCount ?? 16));
+  const stepsPerBar = Math.max(1, Math.min(STEPS_PER_BAR_MAX, track.stepCount ?? 16));
+  return Math.max(1, Math.min(MAX_PATTERN_CELLS, stepsPerBar * SEQUENCE_BAR_COUNT));
 }
 
 function getTrackTriggerDuration(track) {
-  return (60 / state.bpm) * 4 / getTrackVisibleCellCount(track);
+  const stepsPerBar = Math.max(1, Math.min(STEPS_PER_BAR_MAX, track.stepCount ?? 16));
+  return (60 / state.bpm) * 4 / stepsPerBar;
 }
 
 function getTrackScheduleSlot(track, baseStep) {
@@ -2007,6 +2040,97 @@ function syncSampleBrowserOverlay() {
   ui.sampleBrowserOverlay.setAttribute("aria-hidden", String(!state.sampleBrowserOpen));
 }
 
+function syncTrackSettingsOverlay() {
+  if (!ui.trackSettingsOverlay) return;
+  const isOpen = state.trackSettingsOverlay.open;
+  ui.trackSettingsOverlay.classList.toggle("is-hidden", !isOpen);
+  ui.trackSettingsOverlay.setAttribute("aria-hidden", String(!isOpen));
+  if (!isOpen) return;
+
+  const track = state.tracks[state.trackSettingsOverlay.trackIndex] ?? getSelectedTrack();
+  if (ui.trackSettingsTrack) {
+    ui.trackSettingsTrack.textContent = `${track.name} • 2 bars`;
+  }
+  ui.patternVoiceSelect.value = String(track.voiceIndex);
+  ui.trackSteps.value = String(track.stepCount);
+  ui.trackStepsValue.textContent = String(track.stepCount);
+  ui.trackPlaybackMode.value = track.playbackMode;
+  ui.trackStepProbability.value = String(track.stepProbability);
+  ui.trackStepProbabilityValue.textContent = `${track.stepProbability}%`;
+  ui.trackStepFillType.value = track.stepFill.type;
+  ui.trackStepFillAmount.value = String(track.stepFill.amount);
+  ui.trackStepFillAmountValue.textContent = `${track.stepFill.amount}%`;
+  ui.trackStepFillAmount.disabled = track.stepFill.type === "none";
+  if (ui.trackSettingsGroup instanceof HTMLElement) {
+    ui.trackSettingsGroup.classList.add("is-track-active");
+    applyTrackColor(ui.trackSettingsGroup, track.color);
+  }
+}
+
+function openTrackSettingsOverlay(trackIndex) {
+  state.selectedTrackIndex = trackIndex;
+  state.filterOverlay.open = false;
+  state.delayOverlay.open = false;
+  state.driftOverlay.open = false;
+  state.swellOverlay.open = false;
+  state.trackSettingsOverlay = {
+    open: true,
+    trackIndex,
+  };
+  syncUi();
+  renderTrackSelector();
+  renderEffectsMatrix();
+  renderMixer();
+  renderPattern();
+  drawWaveform();
+  writeStoredSession();
+}
+
+function closeTrackSettingsOverlay() {
+  state.trackSettingsOverlay.open = false;
+  syncTrackSettingsOverlay();
+}
+
+function buildTrackFillPattern(track) {
+  const visibleCellCount = getTrackVisibleCellCount(track);
+  const nextPattern = Array.from({ length: MAX_PATTERN_CELLS }, () => false);
+  const fillType = track.stepFill.type;
+  const fillAmount = fillType === "none" ? 0 : Math.max(0, Math.min(100, Number(track.stepFill.amount) || 0));
+  const activeSteps = Math.max(0, Math.min(visibleCellCount, Math.round((visibleCellCount * fillAmount) / 100)));
+
+  if (fillType === "none" || activeSteps === 0) return nextPattern;
+
+  if (fillType === "random") {
+    const candidateSteps = Array.from({ length: visibleCellCount }, (_, index) => index);
+    for (let index = candidateSteps.length - 1; index > 0; index -= 1) {
+      const swapIndex = Math.floor(Math.random() * (index + 1));
+      [candidateSteps[index], candidateSteps[swapIndex]] = [candidateSteps[swapIndex], candidateSteps[index]];
+    }
+    candidateSteps.slice(0, activeSteps).forEach((stepIndex) => {
+      nextPattern[stepIndex] = true;
+    });
+    return nextPattern;
+  }
+
+  if (activeSteps >= visibleCellCount) {
+    for (let index = 0; index < visibleCellCount; index += 1) nextPattern[index] = true;
+    return nextPattern;
+  }
+
+  for (let index = 0; index < activeSteps; index += 1) {
+    const stepIndex = Math.floor((index * visibleCellCount) / activeSteps);
+    nextPattern[Math.max(0, Math.min(visibleCellCount - 1, stepIndex))] = true;
+  }
+  return nextPattern;
+}
+
+function applySelectedTrackStepFill() {
+  const track = getSelectedTrack();
+  track.pattern = buildTrackFillPattern(track);
+  renderPattern();
+  writeStoredSession();
+}
+
 function openSampleBrowser() {
   state.sampleBrowserOpen = true;
   syncSampleBrowserOverlay();
@@ -2138,6 +2262,7 @@ function updateOverviewRegionFromPointer(clientX) {
 
 function openFilterOverlay(trackIndex) {
   state.selectedTrackIndex = trackIndex;
+  state.trackSettingsOverlay.open = false;
   state.delayOverlay.open = false;
   state.driftOverlay.open = false;
   state.swellOverlay.open = false;
@@ -2162,6 +2287,7 @@ function closeFilterOverlay() {
 
 function openDelayOverlay(trackIndex) {
   state.selectedTrackIndex = trackIndex;
+  state.trackSettingsOverlay.open = false;
   state.filterOverlay.open = false;
   state.driftOverlay.open = false;
   state.swellOverlay.open = false;
@@ -2186,6 +2312,7 @@ function closeDelayOverlay() {
 
 function openDriftOverlay(trackIndex) {
   state.selectedTrackIndex = trackIndex;
+  state.trackSettingsOverlay.open = false;
   state.filterOverlay.open = false;
   state.delayOverlay.open = false;
   state.swellOverlay.open = false;
@@ -2210,6 +2337,7 @@ function closeDriftOverlay() {
 
 function openSwellOverlay(trackIndex) {
   state.selectedTrackIndex = trackIndex;
+  state.trackSettingsOverlay.open = false;
   state.filterOverlay.open = false;
   state.delayOverlay.open = false;
   state.driftOverlay.open = false;
@@ -2772,14 +2900,7 @@ function renderPattern(activeStep = -1) {
     applyTrackColor(label, track.color);
     label.innerHTML = `<span class="pattern-row-name">${formatTrackName(track, trackIndex)}</span>`;
     label.addEventListener("click", () => {
-      state.selectedTrackIndex = trackIndex;
-      syncUi();
-      renderTrackSelector();
-      renderEffectsMatrix();
-      renderMixer();
-      renderPattern(activeStep);
-      drawWaveform();
-      writeStoredSession();
+      openTrackSettingsOverlay(trackIndex);
     });
     row.append(label);
 
@@ -2791,8 +2912,14 @@ function renderPattern(activeStep = -1) {
       stepButton.dataset.cellIndex = String(cellIndex);
       stepButton.textContent = String(cellIndex + 1);
       stepButton.addEventListener("click", () => {
+        state.selectedTrackIndex = trackIndex;
         track.pattern[cellIndex] = !track.pattern[cellIndex];
         stepButton.classList.toggle("active", track.pattern[cellIndex]);
+        syncUi();
+        renderEffectsMatrix();
+        renderMixer();
+        renderPattern(activeStep);
+        drawWaveform();
         writeStoredSession();
       });
       row.append(stepButton);
@@ -2846,22 +2973,11 @@ function syncUi() {
   ui.bpmValue.textContent = String(state.bpm);
   ui.swing.value = String(state.swing);
   ui.swingValue.textContent = `${state.swing}%`;
-  ui.trackSteps.value = String(track.stepCount);
-  ui.trackStepsValue.textContent = String(track.stepCount);
-  ui.trackPlaybackMode.value = track.playbackMode;
-  ui.trackStepProbability.value = String(track.stepProbability);
-  ui.trackStepProbabilityValue.textContent = `${track.stepProbability}%`;
-  ui.patternVoiceSelect.value = String(track.voiceIndex);
-  ui.fillDensity.value = String(state.fillDensity);
   ui.mixVolume.value = String(Math.round(state.mixVolume * 100));
   ui.mixVolumeValue.textContent = `${Math.round(state.mixVolume * 100)}%`;
-  ui.fillDensityValue.textContent = `${state.fillDensity}%`;
-  if (ui.sequenceSettingsGroup instanceof HTMLElement) {
-    ui.sequenceSettingsGroup.classList.add("is-track-active");
-    applyTrackColor(ui.sequenceSettingsGroup, track.color);
-  }
   renderPitchLanes();
   syncTransportButton();
+  syncTrackSettingsOverlay();
   syncFilterOverlay();
   syncDelayOverlay();
   syncDriftOverlay();
@@ -3040,27 +3156,6 @@ ui.sliceCount.addEventListener("input", () => {
   updateSelectedVoice({ sliceCount: Number(ui.sliceCount.value) });
 });
 
-ui.randomizePattern.addEventListener("click", () => {
-  const track = getSelectedTrack();
-  const visibleCellCount = getTrackVisibleCellCount(track);
-  const activeSteps = Math.round((visibleCellCount * state.fillDensity) / 100);
-  const nextPattern = Array.from({ length: MAX_PATTERN_CELLS }, () => false);
-  const candidateSteps = Array.from({ length: visibleCellCount }, (_, index) => index);
-
-  for (let index = candidateSteps.length - 1; index > 0; index -= 1) {
-    const swapIndex = Math.floor(Math.random() * (index + 1));
-    [candidateSteps[index], candidateSteps[swapIndex]] = [candidateSteps[swapIndex], candidateSteps[index]];
-  }
-
-  candidateSteps.slice(0, activeSteps).forEach((stepIndex) => {
-    nextPattern[stepIndex] = true;
-  });
-
-  track.pattern = nextPattern;
-  renderPattern();
-  writeStoredSession();
-});
-
 ui.mode.addEventListener("change", () => updateSelectedVoice({ mode: ui.mode.value }));
 ui.grainLocation.addEventListener("change", () => updateSelectedVoice({ grainLocation: ui.grainLocation.value }));
 ui.voicePlacement.addEventListener("input", () => updateSelectedVoice({ voicePlacement: Number(ui.voicePlacement.value) }));
@@ -3071,6 +3166,31 @@ ui.trackStepProbability.addEventListener("input", () => updateSelectedTrack({ st
 ui.patternVoiceSelect.addEventListener("change", () => {
   updateSelectedTrack({ voiceIndex: Number(ui.patternVoiceSelect.value) });
 });
+ui.trackStepFillType.addEventListener("change", () => {
+  const nextType = ui.trackStepFillType.value;
+  const currentTrack = getSelectedTrack();
+  const nextAmount = nextType === "none" ? 0 : currentTrack.stepFill.amount || 50;
+  updateSelectedTrack({
+    stepFill: normalizeStepFillSettings({
+      type: nextType,
+      amount: nextAmount,
+    }, currentTrack.stepFill),
+  });
+});
+ui.trackStepFillAmount.addEventListener("input", () => {
+  updateSelectedTrack({
+    stepFill: normalizeStepFillSettings({
+      type: ui.trackStepFillType.value,
+      amount: Number(ui.trackStepFillAmount.value),
+    }, getSelectedTrack().stepFill),
+  });
+});
+ui.applyTrackStepFill.addEventListener("click", () => applySelectedTrackStepFill());
+ui.trackSettingsClose.addEventListener("click", () => closeTrackSettingsOverlay());
+ui.trackSettingsOverlay.addEventListener("click", (event) => {
+  if (!(event.target instanceof HTMLElement)) return;
+  if (event.target.dataset.trackSettingsOverlayClose === "true") closeTrackSettingsOverlay();
+});
 ui.bpm.addEventListener("input", () => {
   state.bpm = Number(ui.bpm.value);
   syncUi();
@@ -3078,11 +3198,6 @@ ui.bpm.addEventListener("input", () => {
 });
 ui.swing.addEventListener("input", () => {
   state.swing = Math.max(0, Math.min(100, Number(ui.swing.value)));
-  syncUi();
-  writeStoredSession();
-});
-ui.fillDensity.addEventListener("input", () => {
-  state.fillDensity = Math.max(0, Math.min(100, Number(ui.fillDensity.value)));
   syncUi();
   writeStoredSession();
 });
@@ -3264,6 +3379,10 @@ ui.transportToggle.addEventListener("click", async () => {
 });
 
 window.addEventListener("keydown", async (event) => {
+  if (event.key === "Escape" && state.trackSettingsOverlay.open) {
+    closeTrackSettingsOverlay();
+    return;
+  }
   if (event.key === "Escape" && state.filterOverlay.open) {
     closeFilterOverlay();
     return;

@@ -73,74 +73,10 @@
         <section class="panel pane-sequence">
           <div class="panel-head">
             <div class="panel-head-copy">
-              <h2>Sequence</h2>
+              <h2>Sequencer</h2>
             </div>
           </div>
           <div id="pattern-grid" class="pattern-grid"></div>
-        </section>
-
-        <section class="panel pane-sequence-settings">
-          <div class="panel-head">
-            <div class="panel-head-copy">
-              <h2>Sequence Settings</h2>
-            </div>
-          </div>
-          <div id="sequence-settings-group" class="control-group sequence-settings-group">
-            <div class="sequence-settings-stack">
-              <label class="compact-field">
-                Voice
-                <select id="pattern-voice-select">
-                  <option value="0">Voice 1</option>
-                  <option value="1">Voice 2</option>
-                  <option value="2">Voice 3</option>
-                  <option value="3">Voice 4</option>
-                </select>
-              </label>
-              <label class="compact-field">
-                Steps
-                <div class="slider-row">
-                  <input id="track-steps" type="range" min="1" max="32" value="16" />
-                  <span id="track-steps-value" class="value-pill">16</span>
-                </div>
-              </label>
-              <label class="compact-field">
-                Playback Mode
-                <select id="track-playback-mode">
-                  <option value="forward">Forward</option>
-                  <option value="ping-pong">Ping Pong</option>
-                  <option value="random">Random</option>
-                  <option value="reverse">Reverse</option>
-                </select>
-              </label>
-              <label class="compact-field">
-                Step Probability
-                <div class="slider-row">
-                  <input id="track-step-probability" type="range" min="0" max="100" value="100" />
-                  <span id="track-step-probability-value" class="value-pill">100%</span>
-                </div>
-              </label>
-            </div>
-          </div>
-        </section>
-
-        <section class="panel pane-sequence-fill">
-          <div class="panel-head">
-            <div class="panel-head-copy">
-              <h2>Sequence Fill</h2>
-            </div>
-          </div>
-          <div class="sequence-fill-stack">
-            <div class="fill-pattern-control">
-              <label class="fill-density-control">
-                <span class="pattern-steps-meta">
-                  <span>Fill Density</span>
-                  <span id="fill-density-value" class="pattern-steps-value">50%</span>
-                </span>
-                <input id="fill-density" type="range" min="0" max="100" value="50" />
-              </label>
-              <button id="randomize-pattern">Fill Sequence</button>
-            </div>
-          </div>
         </section>
 
         <section class="panel pane-sequence-patterns">
@@ -356,6 +292,78 @@
             </label>
           </div>
         </section>
+      </section>
+    </div>
+
+    <div id="track-settings-overlay" class="overlay-shell is-hidden" aria-hidden="true">
+      <div class="overlay-backdrop" data-track-settings-overlay-close="true"></div>
+      <section class="overlay-panel" role="dialog" aria-modal="true" aria-labelledby="track-settings-title">
+        <div class="panel-head overlay-head">
+          <div class="panel-head-copy">
+            <h2 id="track-settings-title">Track Settings</h2>
+            <p id="track-settings-track"></p>
+          </div>
+          <button id="track-settings-close" type="button">Close</button>
+        </div>
+        <div id="track-settings-group" class="control-group sequence-settings-group track-settings-overlay-group">
+          <div class="sequence-settings-stack">
+            <label class="compact-field">
+              Voice
+              <select id="pattern-voice-select">
+                <option value="0">Voice 1</option>
+                <option value="1">Voice 2</option>
+                <option value="2">Voice 3</option>
+                <option value="3">Voice 4</option>
+              </select>
+            </label>
+            <label class="compact-field">
+              Steps / Bar
+              <div class="slider-row">
+                <input id="track-steps" type="range" min="1" max="32" value="16" />
+                <span id="track-steps-value" class="value-pill">16</span>
+              </div>
+            </label>
+            <label class="compact-field">
+              Playback Mode
+              <select id="track-playback-mode">
+                <option value="forward">Forward</option>
+                <option value="ping-pong">Ping Pong</option>
+                <option value="random">Random</option>
+                <option value="reverse">Reverse</option>
+              </select>
+            </label>
+            <label class="compact-field">
+              Step Probability
+              <div class="slider-row">
+                <input id="track-step-probability" type="range" min="0" max="100" value="100" />
+                <span id="track-step-probability-value" class="value-pill">100%</span>
+              </div>
+            </label>
+            <section class="control-group nested-control-group track-step-fill-group" aria-labelledby="track-step-fill-title">
+              <div class="control-group-head">
+                <h3 id="track-step-fill-title">Step Fill</h3>
+              </div>
+              <div class="control-grid track-settings-grid">
+                <label class="compact-field">
+                  Type
+                  <select id="track-step-fill-type">
+                    <option value="none">None</option>
+                    <option value="even">Even</option>
+                    <option value="random">Random</option>
+                  </select>
+                </label>
+                <label class="compact-field">
+                  Amount
+                  <div class="slider-row">
+                    <input id="track-step-fill-amount" type="range" min="0" max="100" value="0" />
+                    <span id="track-step-fill-amount-value" class="value-pill">0%</span>
+                  </div>
+                </label>
+              </div>
+              <button id="apply-track-step-fill" type="button">Fill Track</button>
+            </section>
+          </div>
+        </div>
       </section>
     </div>
 
