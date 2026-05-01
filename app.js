@@ -105,6 +105,10 @@ const ui = {
   trackStepFillType: document.querySelector("#track-step-fill-type"),
   trackStepFillAmount: document.querySelector("#track-step-fill-amount"),
   trackStepFillAmountValue: document.querySelector("#track-step-fill-amount-value"),
+  trackPitchFillType: document.querySelector("#track-pitch-fill-type"),
+  trackPitchFillFrom: document.querySelector("#track-pitch-fill-from"),
+  trackPitchFillTo: document.querySelector("#track-pitch-fill-to"),
+  trackPitchFillToField: document.querySelector("#track-pitch-fill-to-field"),
   transportToggle: document.querySelector("#transport-toggle"),
   mixVolume: document.querySelector("#mix-volume"),
   mixVolumeValue: document.querySelector("#mix-volume-value"),
@@ -134,6 +138,7 @@ const EFFECT_KEYS = ["filter", "delay", "drift", "swell"];
 const FILTER_TYPES = ["lowpass", "bandpass", "highpass"];
 const TRACK_PLAYBACK_MODES = ["forward", "ping-pong", "random", "reverse"];
 const TRACK_STEP_FILL_TYPES = ["none", "even", "random"];
+const TRACK_PITCH_FILL_TYPES = ["single", "rising", "falling", "random"];
 const SYNTH_WAVES = ["sine", "triangle", "sawtooth", "square"];
 const SCALE_OPTIONS = [
   { value: "chromatic", label: "Chromatic", intervals: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] },
@@ -269,6 +274,14 @@ function createDefaultStepFillSettings() {
   };
 }
 
+function createDefaultPitchFillSettings() {
+  return {
+    type: "single",
+    from: PITCH_LANE_REFERENCE_MIDI,
+    to: PITCH_LANE_REFERENCE_MIDI,
+  };
+}
+
 function normalizeFilterSettings(source = {}, fallback = createDefaultFilterSettings()) {
   return {
     enabled: Boolean(source.enabled),
@@ -285,6 +298,17 @@ function normalizeStepFillSettings(source = {}, fallback = createDefaultStepFill
     ? 0
     : Math.max(0, Math.min(100, amountSource));
   return { type, amount };
+}
+
+function normalizePitchFillSettings(source = {}, fallback = createDefaultPitchFillSettings()) {
+  const type = TRACK_PITCH_FILL_TYPES.includes(source.type) ? source.type : fallback.type;
+  const from = clampMidiNote(source.from ?? fallback.from, fallback.from);
+  const to = clampMidiNote(source.to ?? fallback.to, fallback.to);
+  return {
+    type,
+    from: Math.min(from, to),
+    to: Math.max(from, to),
+  };
 }
 
 function normalizeDelaySettings(source = {}, fallback = createDefaultDelaySettings()) {
@@ -335,6 +359,22 @@ function midiToFrequency(midiNote) {
 
 function formatMidiNote(midiNote) {
   return `${NOTE_NAMES[((midiNote % 12) + 12) % 12]}${Math.floor(midiNote / 12) - 1}`;
+}
+
+function populatePitchFillNoteOptions() {
+  if (!(ui.trackPitchFillFrom instanceof HTMLSelectElement) || !(ui.trackPitchFillTo instanceof HTMLSelectElement)) return;
+  if (ui.trackPitchFillFrom.options.length && ui.trackPitchFillTo.options.length) return;
+  for (let midiNote = PITCH_LANE_START_MIDI; midiNote < PITCH_LANE_START_MIDI + PITCH_LANE_NOTE_COUNT; midiNote += 1) {
+    const fromOption = document.createElement("option");
+    fromOption.value = String(midiNote);
+    fromOption.textContent = formatMidiNote(midiNote);
+    ui.trackPitchFillFrom.append(fromOption);
+
+    const toOption = document.createElement("option");
+    toOption.value = String(midiNote);
+    toOption.textContent = formatMidiNote(midiNote);
+    ui.trackPitchFillTo.append(toOption);
+  }
 }
 
 function formatSynthWaveLabel(wave) {
@@ -941,6 +981,7 @@ function createTrack(id) {
     playbackMode: "forward",
     stepProbability: 100,
     stepFill: createDefaultStepFillSettings(),
+    pitchFill: createDefaultPitchFillSettings(),
     stepPitches: Array.from({ length: MAX_PATTERN_CELLS }, () => null),
     pattern: Array.from({ length: MAX_PATTERN_CELLS }, (_, index) => (index + id - 1) % 4 === 0),
   };
@@ -1109,6 +1150,7 @@ function normalizeTrack(index, source = {}) {
       Math.min(100, Number.isFinite(Number(source.stepProbability)) ? Number(source.stepProbability) : fallback.stepProbability),
     ),
     stepFill: normalizeStepFillSettings(source.stepFill ?? fallback.stepFill, fallback.stepFill),
+    pitchFill: normalizePitchFillSettings(source.pitchFill ?? fallback.pitchFill, fallback.pitchFill),
     stepPitches: Array.from({ length: MAX_PATTERN_CELLS }, (_, step) => {
       const value = source.stepPitches?.[step];
       return value == null ? null : clampMidiNote(value, PITCH_LANE_REFERENCE_MIDI);
@@ -1194,6 +1236,7 @@ function writeStoredSession() {
       playbackMode: track.playbackMode,
       stepProbability: track.stepProbability,
       stepFill: { ...track.stepFill },
+      pitchFill: { ...track.pitchFill },
       stepPitches: track.stepPitches.slice(0, MAX_PATTERN_CELLS),
       pattern: track.pattern.slice(0, MAX_PATTERN_CELLS),
     })),
@@ -1558,6 +1601,55 @@ function getAssignedTrackStepPitchMidi(track, cellIndex = null) {
   return stepPitch == null ? null : clampMidiNote(stepPitch, PITCH_LANE_REFERENCE_MIDI);
 }
 
+function getScaleNotesInRange(track, fromMidi, toMidi) {
+  const rangeStart = clampMidiNote(Math.min(fromMidi, toMidi), PITCH_LANE_START_MIDI);
+  const rangeEnd = clampMidiNote(Math.max(fromMidi, toMidi), PITCH_LANE_START_MIDI + PITCH_LANE_NOTE_COUNT - 1);
+  const notes = [];
+  for (let midiNote = rangeStart; midiNote <= rangeEnd; midiNote += 1) {
+    if (isMidiNoteInTrackScale(track, midiNote)) notes.push(midiNote);
+  }
+  return notes;
+}
+
+function quantizeMidiToTrackScale(track, midiNote) {
+  const clamped = clampMidiNote(midiNote, PITCH_LANE_REFERENCE_MIDI);
+  if (isMidiNoteInTrackScale(track, clamped)) return clamped;
+  for (let distance = 1; distance <= 12; distance += 1) {
+    const lower = clamped - distance;
+    const upper = clamped + distance;
+    const lowerValid = lower >= PITCH_LANE_START_MIDI && isMidiNoteInTrackScale(track, lower);
+    const upperValid = upper <= PITCH_LANE_START_MIDI + PITCH_LANE_NOTE_COUNT - 1 && isMidiNoteInTrackScale(track, upper);
+    if (lowerValid) return lower;
+    if (upperValid) return upper;
+  }
+  return clamped;
+}
+
+function quantizeTrackStepPitches(track) {
+  track.stepPitches = track.stepPitches.map((pitch) => (pitch == null ? null : quantizeMidiToTrackScale(track, pitch)));
+}
+
+function applyTrackPitchFill(track) {
+  const fill = track.pitchFill;
+  const activeStepIndexes = track.pattern
+    .slice(0, getTrackVisibleCellCount(track))
+    .map((enabled, index) => (enabled ? index : -1))
+    .filter((index) => index >= 0);
+
+  if (!activeStepIndexes.length) return;
+
+  const fillNotes = getScaleNotesInRange(track, fill.from, fill.type === "single" ? fill.from : fill.to);
+  const availableNotes = fillNotes.length ? fillNotes : [quantizeMidiToTrackScale(track, fill.from)];
+
+  activeStepIndexes.forEach((stepIndex, activeIndex) => {
+    let pitch = availableNotes[0];
+    if (fill.type === "rising") pitch = availableNotes[activeIndex % availableNotes.length];
+    if (fill.type === "falling") pitch = availableNotes[(availableNotes.length - 1) - (activeIndex % availableNotes.length)];
+    if (fill.type === "random") pitch = availableNotes[Math.floor(Math.random() * availableNotes.length)];
+    track.stepPitches[stepIndex] = pitch;
+  });
+}
+
 function getTrackPlaybackHighlightMidi(track) {
   const playbackState = state.trackPlaybackState[track.id - 1];
   const triggeredIndex = playbackState?.lastTriggeredPatternIndex;
@@ -1752,6 +1844,7 @@ function renderPatternVoiceOptions() {
 function renderPitchLanes() {
   if (!ui.pitchLanes) return;
   ui.pitchLanes.innerHTML = "";
+  populatePitchFillNoteOptions();
 
   state.tracks.forEach((track, index) => {
     const lane = document.createElement("div");
@@ -1835,7 +1928,9 @@ function renderPitchLanes() {
     scaleSelect.value = track.scaleMode;
     scaleSelect.addEventListener("change", () => {
       track.scaleMode = normalizeScaleMode(scaleSelect.value, track.scaleMode);
+      quantizeTrackStepPitches(track);
       renderPitchLanes();
+      renderPattern();
       writeStoredSession();
     });
     lane.append(scaleSelect);
@@ -2155,6 +2250,11 @@ function syncTrackSettingsOverlay() {
   ui.trackStepFillAmount.value = String(track.stepFill.amount);
   ui.trackStepFillAmountValue.textContent = `${track.stepFill.amount}%`;
   ui.trackStepFillAmount.disabled = track.stepFill.type === "none";
+  ui.trackPitchFillType.value = track.pitchFill.type;
+  ui.trackPitchFillFrom.value = String(track.pitchFill.from);
+  ui.trackPitchFillTo.value = String(track.pitchFill.to);
+  ui.trackPitchFillTo.disabled = track.pitchFill.type === "single";
+  ui.trackPitchFillToField.classList.toggle("is-disabled", track.pitchFill.type === "single");
   if (ui.trackSettingsGroup instanceof HTMLElement) {
     ui.trackSettingsGroup.classList.add("is-track-active");
     applyTrackColor(ui.trackSettingsGroup, track.color);
@@ -3111,7 +3211,11 @@ function updateSelectedTrack(patch) {
   if ("stepCount" in patch || "playbackMode" in patch || "voiceIndex" in patch) resetTrackPlaybackState(state.selectedTrackIndex);
   if ("stepFill" in patch) {
     getSelectedTrack().pattern = buildTrackFillPattern(getSelectedTrack());
+    applyTrackPitchFill(getSelectedTrack());
     resetTrackPlaybackState(state.selectedTrackIndex);
+  }
+  if ("pitchFill" in patch) {
+    applyTrackPitchFill(getSelectedTrack());
   }
   state.playback?.updateTrackBus(state.selectedTrackIndex, getSelectedTrack());
   syncUi();
@@ -3301,6 +3405,37 @@ ui.trackStepFillAmount.addEventListener("input", () => {
       type: ui.trackStepFillType.value,
       amount: Number(ui.trackStepFillAmount.value),
     }, getSelectedTrack().stepFill),
+  });
+});
+ui.trackPitchFillType.addEventListener("change", () => {
+  const currentTrack = getSelectedTrack();
+  const nextType = ui.trackPitchFillType.value;
+  updateSelectedTrack({
+    pitchFill: normalizePitchFillSettings({
+      type: nextType,
+      from: Number(ui.trackPitchFillFrom.value),
+      to: nextType === "single" ? Number(ui.trackPitchFillFrom.value) : Number(ui.trackPitchFillTo.value),
+    }, currentTrack.pitchFill),
+  });
+});
+ui.trackPitchFillFrom.addEventListener("change", () => {
+  const currentTrack = getSelectedTrack();
+  updateSelectedTrack({
+    pitchFill: normalizePitchFillSettings({
+      type: ui.trackPitchFillType.value,
+      from: Number(ui.trackPitchFillFrom.value),
+      to: ui.trackPitchFillType.value === "single" ? Number(ui.trackPitchFillFrom.value) : Number(ui.trackPitchFillTo.value),
+    }, currentTrack.pitchFill),
+  });
+});
+ui.trackPitchFillTo.addEventListener("change", () => {
+  const currentTrack = getSelectedTrack();
+  updateSelectedTrack({
+    pitchFill: normalizePitchFillSettings({
+      type: ui.trackPitchFillType.value,
+      from: Number(ui.trackPitchFillFrom.value),
+      to: Number(ui.trackPitchFillTo.value),
+    }, currentTrack.pitchFill),
   });
 });
 ui.trackSettingsClose.addEventListener("click", () => closeTrackSettingsOverlay());
