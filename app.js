@@ -31,6 +31,7 @@ const ui = {
   voicePlacement: document.querySelector("#voice-placement"),
   voicePlacementValue: document.querySelector("#voice-placement-value"),
   voicePlaybackMode: document.querySelector("#voice-playback-mode"),
+  voicePitchField: document.querySelector("#voice-pitch-field"),
   grainSize: document.querySelector("#grain-size"),
   grainSizeValue: document.querySelector("#grain-size-value"),
   grainDensity: document.querySelector("#grain-density"),
@@ -43,6 +44,7 @@ const ui = {
   chopGateValue: document.querySelector("#chop-gate-value"),
   reverse: document.querySelector("#reverse"),
   synthWave: document.querySelector("#synth-wave"),
+  synthTuneField: document.querySelector("#synth-tune-field"),
   synthTune: document.querySelector("#synth-tune"),
   synthNoiseMixKnob: document.querySelector("#synth-noise-mix-knob"),
   synthNoiseMixValue: document.querySelector("#synth-noise-mix-value"),
@@ -123,9 +125,9 @@ const STEPS_PER_BAR_MAX = 32;
 const BASE_GRID_STEPS = 32 * SEQUENCE_BAR_COUNT;
 const MAX_PATTERN_CELLS = STEPS_PER_BAR_MAX * SEQUENCE_BAR_COUNT;
 const TRACK_COUNT = 4;
-const PITCH_LANE_NOTE_COUNT = 48;
-const PITCH_LANE_START_MIDI = 38;
-const PITCH_LANE_REFERENCE_MIDI = 62;
+const PITCH_LANE_NOTE_COUNT = 60;
+const PITCH_LANE_START_MIDI = 24;
+const PITCH_LANE_REFERENCE_MIDI = 60;
 const SYNTH_TUNE_DEFAULT_MIDI = 38;
 const TRACK_COLORS = ["#59d0ff", "#ff8f5a", "#8dff7a", "#ffd34d"];
 const EFFECT_KEYS = ["filter", "delay", "drift", "swell"];
@@ -145,7 +147,7 @@ const SCALE_OPTIONS = [
   { value: "major-pent", label: "Major Pent.", intervals: [0, 2, 4, 7, 9] },
   { value: "minor-pent", label: "Minor Pent.", intervals: [0, 3, 5, 7, 10] },
 ];
-const D_ROOT_PITCH_CLASS = 2;
+const D_ROOT_PITCH_CLASS = 0;
 const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
 function updateRangeFill(input) {
@@ -1550,10 +1552,16 @@ function getTrackStepPitchMidi(track, cellIndex = null) {
   return stepPitch == null ? getTrackPitchMidi(track) : clampMidiNote(stepPitch, getTrackPitchMidi(track));
 }
 
+function getAssignedTrackStepPitchMidi(track, cellIndex = null) {
+  if (!Number.isInteger(cellIndex) || cellIndex < 0) return null;
+  const stepPitch = track.stepPitches?.[cellIndex];
+  return stepPitch == null ? null : clampMidiNote(stepPitch, PITCH_LANE_REFERENCE_MIDI);
+}
+
 function getTrackPlaybackHighlightMidi(track) {
   const playbackState = state.trackPlaybackState[track.id - 1];
   const triggeredIndex = playbackState?.lastTriggeredPatternIndex;
-  if (!Number.isInteger(triggeredIndex) || triggeredIndex < 0) return getTrackPitchMidi(track);
+  if (!Number.isInteger(triggeredIndex) || triggeredIndex < 0) return null;
   return getTrackStepPitchMidi(track, triggeredIndex);
 }
 
@@ -1662,9 +1670,14 @@ function updatePitchPlaybackHighlights() {
     const midiNote = Number(key.dataset.midiNote);
     const track = state.tracks[trackIndex];
     if (!track || !Number.isFinite(midiNote)) return;
+    const highlightMidi = getTrackPlaybackHighlightMidi(track);
+    if (!Number.isFinite(highlightMidi)) {
+      key.classList.remove("is-active");
+      return;
+    }
     const activeMidi = Math.max(
       PITCH_LANE_START_MIDI,
-      Math.min(PITCH_LANE_START_MIDI + PITCH_LANE_NOTE_COUNT - 1, getTrackPlaybackHighlightMidi(track)),
+      Math.min(PITCH_LANE_START_MIDI + PITCH_LANE_NOTE_COUNT - 1, highlightMidi),
     );
     key.classList.toggle("is-active", midiNote === activeMidi);
   });
@@ -1766,10 +1779,13 @@ function renderPitchLanes() {
     keyboard.style.setProperty("--track-color-soft", hexToRgba(track.color, 0.16));
     keyboard.style.setProperty("--track-color-strong", hexToRgba(track.color, 0.34));
 
-    const activeMidi = Math.max(
-      PITCH_LANE_START_MIDI,
-      Math.min(PITCH_LANE_START_MIDI + PITCH_LANE_NOTE_COUNT - 1, getTrackPlaybackHighlightMidi(track)),
-    );
+    const highlightMidi = getTrackPlaybackHighlightMidi(track);
+    const activeMidi = Number.isFinite(highlightMidi)
+      ? Math.max(
+        PITCH_LANE_START_MIDI,
+        Math.min(PITCH_LANE_START_MIDI + PITCH_LANE_NOTE_COUNT - 1, highlightMidi),
+      )
+      : null;
     const selectedPitchCell = state.pitchStepSelection.trackIndex === index ? state.pitchStepSelection.cellIndex : null;
     for (let noteIndex = 0; noteIndex < PITCH_LANE_NOTE_COUNT; noteIndex += 1) {
       const midiNote = PITCH_LANE_START_MIDI + noteIndex;
@@ -1781,10 +1797,10 @@ function renderPitchLanes() {
       if (track.scaleMode !== "chromatic" && isMidiNoteInTrackScale(track, midiNote)) {
         key.classList.add("is-in-scale");
       }
-      if (midiNote === activeMidi) {
+      if (activeMidi !== null && midiNote === activeMidi) {
         key.classList.add("is-active");
       }
-      if (selectedPitchCell != null && midiNote === getTrackStepPitchMidi(track, selectedPitchCell)) {
+      if (selectedPitchCell != null && midiNote === getAssignedTrackStepPitchMidi(track, selectedPitchCell)) {
         key.classList.add("is-pitch-target");
       }
       key.dataset.trackIndex = String(index);
@@ -3057,6 +3073,10 @@ function syncUi() {
   ui.synthFilterFrequencyValue.textContent = formatFilterFrequencyValue(voice.synthFilterFrequency);
   ui.synthFilterQ.value = String(voice.synthFilterQ);
   ui.synthFilterQValue.textContent = voice.synthFilterQ.toFixed(1);
+  ui.pitch.disabled = true;
+  ui.voicePitchField.classList.add("is-disabled");
+  ui.synthTune.disabled = true;
+  ui.synthTuneField.classList.add("is-disabled");
   const synthMode = voice.mode === "synth";
   const sampleVoiceModeLabel = voice.mode === "chop" ? "Chop" : "Grain";
   const sampleVoiceTitle = document.querySelector("#sample-voice-group-title");
