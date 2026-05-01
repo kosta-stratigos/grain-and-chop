@@ -1650,6 +1650,28 @@ function applyTrackPitchFill(track) {
   });
 }
 
+function assignPitchFillToStep(track, cellIndex) {
+  const fill = track.pitchFill;
+  const visibleCellCount = getTrackVisibleCellCount(track);
+  if (!track.pattern[cellIndex] || cellIndex < 0 || cellIndex >= visibleCellCount) return;
+
+  const activeStepIndexes = track.pattern
+    .slice(0, visibleCellCount)
+    .map((enabled, index) => (enabled ? index : -1))
+    .filter((index) => index >= 0);
+  const activeIndex = activeStepIndexes.indexOf(cellIndex);
+  if (activeIndex < 0) return;
+
+  const fillNotes = getScaleNotesInRange(track, fill.from, fill.type === "single" ? fill.from : fill.to);
+  const availableNotes = fillNotes.length ? fillNotes : [quantizeMidiToTrackScale(track, fill.from)];
+
+  let pitch = availableNotes[0];
+  if (fill.type === "rising") pitch = availableNotes[activeIndex % availableNotes.length];
+  if (fill.type === "falling") pitch = availableNotes[(availableNotes.length - 1) - (activeIndex % availableNotes.length)];
+  if (fill.type === "random") pitch = availableNotes[Math.floor(Math.random() * availableNotes.length)];
+  track.stepPitches[cellIndex] = pitch;
+}
+
 function getTrackPlaybackHighlightMidi(track) {
   const playbackState = state.trackPlaybackState[track.id - 1];
   const triggeredIndex = playbackState?.lastTriggeredPatternIndex;
@@ -3118,7 +3140,9 @@ function renderPattern(activeStep = -1) {
           state.pitchStepSelection = { trackIndex: null, cellIndex: null };
         }
         track.pattern[cellIndex] = !track.pattern[cellIndex];
-        if (!track.pattern[cellIndex]) {
+        if (track.pattern[cellIndex]) {
+          assignPitchFillToStep(track, cellIndex);
+        } else {
           track.stepPitches[cellIndex] = null;
           if (state.pitchStepSelection.trackIndex === trackIndex && state.pitchStepSelection.cellIndex === cellIndex) {
             state.pitchStepSelection = { trackIndex: null, cellIndex: null };
