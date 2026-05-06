@@ -102,12 +102,12 @@ h1 {
 }
 
 .subhead {
-  font-family: "Elms Sans", var(--font-body);
+  font-family: "Josefin Slab", var(--font-display);
   max-width: none;
   color: var(--muted);
   font-size: clamp(0.68rem, 1.15vw, 1rem);
-  font-style: italic;
-  font-weight: 200;
+  font-style: normal;
+  font-weight: 300;
   letter-spacing: 0.02em;
   text-transform: lowercase;
   white-space: nowrap;
