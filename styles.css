@@ -79,7 +79,7 @@ select {
 .hero-copy {
   display: flex;
   align-items: baseline;
-  gap: 14px;
+  gap: 12px;
   min-width: 0;
 }
 
@@ -91,20 +91,25 @@ h3 {
 }
 
 h1 {
-  font-family: var(--font-display);
-  font-size: clamp(1.2rem, 2.2vw, 1.9rem);
+  font-family: "Alfa Slab One", var(--font-display);
+  font-size: clamp(1.4rem, 2.4vw, 2.15rem);
   line-height: 1;
   margin-bottom: 0;
   white-space: nowrap;
-  letter-spacing: 0.04em;
-  font-weight: 300;
+  letter-spacing: 0.03em;
+  font-weight: 400;
+  text-transform: uppercase;
 }
 
 .subhead {
+  font-family: "Elms Sans", var(--font-body);
   max-width: none;
   color: var(--muted);
-  font-size: 0.88rem;
-  font-weight: 600;
+  font-size: clamp(0.68rem, 1.15vw, 1rem);
+  font-style: italic;
+  font-weight: 200;
+  letter-spacing: 0.02em;
+  text-transform: lowercase;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
