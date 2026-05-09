@@ -140,7 +140,7 @@ const EFFECT_KEYS = ["filter", "delay", "drift", "swell"];
 const FILTER_TYPES = ["lowpass", "bandpass", "highpass"];
 const TRACK_PLAYBACK_MODES = ["forward", "ping-pong", "random", "reverse"];
 const TRACK_STEP_FILL_TYPES = ["none", "even", "random"];
-const TRACK_PITCH_FILL_TYPES = ["single", "rising", "falling", "random"];
+const TRACK_PITCH_FILL_TYPES = ["single", "rising", "falling", "random-once", "random-every"];
 const SYNTH_WAVES = ["sine", "triangle", "sawtooth", "square"];
 const SCALE_OPTIONS = [
   { value: "chromatic", label: "Chromatic", intervals: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] },
@@ -311,7 +311,8 @@ function normalizeStepFillSettings(source = {}, fallback = createDefaultStepFill
 }
 
 function normalizePitchFillSettings(source = {}, fallback = createDefaultPitchFillSettings()) {
-  const type = TRACK_PITCH_FILL_TYPES.includes(source.type) ? source.type : fallback.type;
+  const sourceType = source.type === "random" ? "random-once" : source.type;
+  const type = TRACK_PITCH_FILL_TYPES.includes(sourceType) ? sourceType : fallback.type;
   const from = clampMidiNote(source.from ?? fallback.from, fallback.from);
   const to = clampMidiNote(source.to ?? fallback.to, fallback.to);
   return {
@@ -974,15 +975,24 @@ class TransportLayer {
       if (!shouldAdvanceTrackStep(track, stepIndex)) return;
       const cellIndex = resolveTrackPatternStep(track, { advance: true });
       const playbackState = this.state.trackPlaybackState[track.id - 1];
-      if (playbackState) playbackState.lastTriggeredPatternIndex = -1;
+      if (playbackState) {
+        playbackState.lastTriggeredPatternIndex = -1;
+        playbackState.lastTriggeredPitchMidi = null;
+      }
       if (!track.pattern[cellIndex]) return;
       if (Math.random() * 100 > track.stepProbability) return;
       if (!isTrackAudible(track)) return;
       const sliceIndex = resolvePlaybackSliceIndex(track, { advance: true });
       const noteDuration = getTrackTriggerDuration(track);
-      const pitchMidi = getTrackStepPitchMidi(track, cellIndex);
+      const randomEveryNotes = track.pitchFill.type === "random-every" ? getTrackPitchFillNotes(track) : null;
+      const pitchMidi = randomEveryNotes
+        ? randomEveryNotes[Math.floor(Math.random() * randomEveryNotes.length)]
+        : getTrackStepPitchMidi(track, cellIndex);
       const pitchSemitones = pitchMidi - PITCH_LANE_REFERENCE_MIDI;
-      if (playbackState) playbackState.lastTriggeredPatternIndex = cellIndex;
+      if (playbackState) {
+        playbackState.lastTriggeredPatternIndex = cellIndex;
+        playbackState.lastTriggeredPitchMidi = pitchMidi;
+      }
       indicateTrackPlayback(track, sliceIndex);
       this.playbackLayer.triggerTrack(track, when, sliceIndex, noteDuration, { pitchMidi, pitchSemitones });
     });
@@ -1153,6 +1163,7 @@ function createTrackPlaybackState(track = createTrack(1)) {
     patternDirection: track.playbackMode === "reverse" ? -1 : 1,
     lastPatternIndex: -1,
     lastTriggeredPatternIndex: -1,
+    lastTriggeredPitchMidi: null,
     lastScheduledSlot: -1,
   };
 }
@@ -1664,6 +1675,12 @@ function getScaleNotesInRange(track, fromMidi, toMidi) {
   return notes;
 }
 
+function getTrackPitchFillNotes(track) {
+  const fill = track.pitchFill;
+  const fillNotes = getScaleNotesInRange(track, fill.from, fill.type === "single" ? fill.from : fill.to);
+  return fillNotes.length ? fillNotes : [quantizeMidiToTrackScale(track, fill.from)];
+}
+
 function quantizeMidiToTrackScale(track, midiNote) {
   const clamped = clampMidiNote(midiNote, PITCH_LANE_REFERENCE_MIDI);
   if (isMidiNoteInTrackScale(track, clamped)) return clamped;
@@ -1691,14 +1708,15 @@ function applyTrackPitchFill(track) {
 
   if (!activeStepIndexes.length) return;
 
-  const fillNotes = getScaleNotesInRange(track, fill.from, fill.type === "single" ? fill.from : fill.to);
-  const availableNotes = fillNotes.length ? fillNotes : [quantizeMidiToTrackScale(track, fill.from)];
+  const availableNotes = getTrackPitchFillNotes(track);
 
   activeStepIndexes.forEach((stepIndex, activeIndex) => {
     let pitch = availableNotes[0];
     if (fill.type === "rising") pitch = availableNotes[activeIndex % availableNotes.length];
     if (fill.type === "falling") pitch = availableNotes[(availableNotes.length - 1) - (activeIndex % availableNotes.length)];
-    if (fill.type === "random") pitch = availableNotes[Math.floor(Math.random() * availableNotes.length)];
+    if (fill.type === "random-once" || fill.type === "random-every") {
+      pitch = availableNotes[Math.floor(Math.random() * availableNotes.length)];
+    }
     track.stepPitches[stepIndex] = pitch;
   });
 }
@@ -1715,18 +1733,20 @@ function assignPitchFillToStep(track, cellIndex) {
   const activeIndex = activeStepIndexes.indexOf(cellIndex);
   if (activeIndex < 0) return;
 
-  const fillNotes = getScaleNotesInRange(track, fill.from, fill.type === "single" ? fill.from : fill.to);
-  const availableNotes = fillNotes.length ? fillNotes : [quantizeMidiToTrackScale(track, fill.from)];
+  const availableNotes = getTrackPitchFillNotes(track);
 
   let pitch = availableNotes[0];
   if (fill.type === "rising") pitch = availableNotes[activeIndex % availableNotes.length];
   if (fill.type === "falling") pitch = availableNotes[(availableNotes.length - 1) - (activeIndex % availableNotes.length)];
-  if (fill.type === "random") pitch = availableNotes[Math.floor(Math.random() * availableNotes.length)];
+  if (fill.type === "random-once" || fill.type === "random-every") pitch = availableNotes[Math.floor(Math.random() * availableNotes.length)];
   track.stepPitches[cellIndex] = pitch;
 }
 
 function getTrackPlaybackHighlightMidi(track) {
   const playbackState = state.trackPlaybackState[track.id - 1];
+  if (Number.isFinite(playbackState?.lastTriggeredPitchMidi)) {
+    return playbackState.lastTriggeredPitchMidi;
+  }
   const triggeredIndex = playbackState?.lastTriggeredPatternIndex;
   if (!Number.isInteger(triggeredIndex) || triggeredIndex < 0) return null;
   return getTrackStepPitchMidi(track, triggeredIndex);
