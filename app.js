@@ -611,7 +611,7 @@ class PlaybackLayer {
     this.synthScopeAnalyser = audioContext.createAnalyser();
     this.synthScopeSink = audioContext.createGain();
     this.synthScopeAnalyser.fftSize = 2048;
-    this.synthScopeAnalyser.smoothingTimeConstant = 0.84;
+    this.synthScopeAnalyser.smoothingTimeConstant = 0.08;
     this.synthScopeSink.gain.value = 0;
     this.synthScopeAnalyser.connect(this.synthScopeSink);
     this.synthScopeSink.connect(audioContext.destination);
@@ -2056,13 +2056,13 @@ function drawSynthScopeFrame() {
     return;
   }
 
-  const data = new Uint8Array(analyser.fftSize);
-  analyser.getByteTimeDomainData(data);
+  const data = new Float32Array(analyser.fftSize);
+  analyser.getFloatTimeDomainData(data);
   const targetFrequency = getSelectedSynthScopeFrequency();
   const samplesPerCycle = Number.isFinite(targetFrequency) && targetFrequency > 0
     ? Math.max(24, Math.min(data.length / 2, Math.round(analyser.context.sampleRate / targetFrequency)))
     : Math.max(48, Math.round(data.length / 6));
-  const centerValue = 128;
+  const centerValue = 0;
   let startIndex = 0;
   for (let index = 1; index < data.length - samplesPerCycle - 2; index += 1) {
     const previous = data[index - 1];
@@ -2093,7 +2093,8 @@ function drawSynthScopeFrame() {
   for (let index = 0; index < samplesPerCycle; index += 1) {
     const sampleIndex = Math.min(data.length - 1, bestIndex + index);
     const x = (index / Math.max(1, samplesPerCycle - 1)) * width;
-    const y = (data[sampleIndex] / 255) * height;
+    const normalized = Math.max(-1, Math.min(1, data[sampleIndex]));
+    const y = midY - normalized * (height * 0.38);
     if (index === 0) context.moveTo(x, y);
     else context.lineTo(x, y);
   }
