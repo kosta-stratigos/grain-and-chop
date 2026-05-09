@@ -48,11 +48,14 @@ const ui = {
   synthTune: document.querySelector("#synth-tune"),
   synthNoiseMixKnob: document.querySelector("#synth-noise-mix-knob"),
   synthNoiseMixValue: document.querySelector("#synth-noise-mix-value"),
+  synthFold: document.querySelector("#synth-fold"),
+  synthFoldValue: document.querySelector("#synth-fold-value"),
   synthFilterType: document.querySelector("#synth-filter-type"),
   synthFilterFrequency: document.querySelector("#synth-filter-frequency"),
   synthFilterFrequencyValue: document.querySelector("#synth-filter-frequency-value"),
   synthFilterQ: document.querySelector("#synth-filter-q"),
   synthFilterQValue: document.querySelector("#synth-filter-q-value"),
+  synthWaveformScope: document.querySelector("#synth-waveform-scope"),
   effectsMatrix: document.querySelector("#effects-matrix"),
   filterOverlay: document.querySelector("#filter-overlay"),
   filterOverlayTrack: document.querySelector("#filter-overlay-track"),
@@ -221,7 +224,13 @@ function clampMidiNote(value, fallback = SYNTH_TUNE_DEFAULT_MIDI) {
 }
 
 function clampNoiseMix(value, fallback = 0) {
-  return Math.max(0, Math.min(100, Number(value) || fallback));
+  const resolved = Number.isFinite(Number(value)) ? Number(value) : fallback;
+  return Math.max(0, Math.min(100, resolved));
+}
+
+function clampSynthFoldAmount(value, fallback = 0) {
+  const resolved = Number.isFinite(Number(value)) ? Number(value) : fallback;
+  return Math.max(0, Math.min(100, resolved));
 }
 
 function normalizeScaleMode(value, fallback = "chromatic") {
@@ -450,6 +459,20 @@ function getRotaryAngleFromPercent(value) {
   return -135 + (percent / 100) * 270;
 }
 
+function buildWaveFoldCurve(amount, sampleCount = 4096) {
+  const safeAmount = clampSynthFoldAmount(amount, 0);
+  const curve = new Float32Array(sampleCount);
+  const drive = 1 + (safeAmount / 100) * 7;
+  for (let index = 0; index < sampleCount; index += 1) {
+    const x = (index / (sampleCount - 1)) * 2 - 1;
+    let y = x * drive;
+    while (y > 1) y = 2 - y;
+    while (y < -1) y = -2 - y;
+    curve[index] = y;
+  }
+  return curve;
+}
+
 class SampleLayer {
   constructor() {
     this.buffer = null;
@@ -520,6 +543,13 @@ class PlaybackLayer {
     this.sampleLayer = sampleLayer;
     this.state = state;
     this.noiseBuffer = this.createNoiseBuffer();
+    this.synthScopeAnalyser = audioContext.createAnalyser();
+    this.synthScopeSink = audioContext.createGain();
+    this.synthScopeAnalyser.fftSize = 2048;
+    this.synthScopeAnalyser.smoothingTimeConstant = 0.84;
+    this.synthScopeSink.gain.value = 0;
+    this.synthScopeAnalyser.connect(this.synthScopeSink);
+    this.synthScopeSink.connect(audioContext.destination);
     this.output = audioContext.createGain();
     this.output.gain.value = 0.9;
     this.output.connect(audioContext.destination);
@@ -832,12 +862,15 @@ class PlaybackLayer {
     const noiseSource = this.audioContext.createBufferSource();
     const waveGain = this.audioContext.createGain();
     const noiseGain = this.audioContext.createGain();
+    const foldInput = this.audioContext.createGain();
+    const waveShaper = this.audioContext.createWaveShaper();
     const filterNode = this.audioContext.createBiquadFilter();
     const ampGain = this.audioContext.createGain();
-    const release = 0.08;
     const holdDuration = Math.max(0.05, noteDuration);
     const noiseMix = clampNoiseMix(settings.noiseMix, 0) / 100;
     const waveMix = 1 - noiseMix;
+    const foldAmount = clampSynthFoldAmount(settings.foldAmount, 0);
+    const useWaveFold = foldAmount > 0.1;
 
     oscillator.type = SYNTH_WAVES.includes(settings.wave) ? settings.wave : "sine";
     oscillator.frequency.setValueAtTime(frequency, when);
@@ -846,6 +879,8 @@ class PlaybackLayer {
 
     waveGain.gain.setValueAtTime(waveMix * 0.7, when);
     noiseGain.gain.setValueAtTime(noiseMix * 0.5, when);
+    waveShaper.curve = buildWaveFoldCurve(foldAmount);
+    waveShaper.oversample = "4x";
     filterNode.type = FILTER_TYPES.includes(settings.filterType) ? settings.filterType : "lowpass";
     filterNode.frequency.setValueAtTime(clampFilterFrequency(settings.filterFrequency), when);
     filterNode.Q.setValueAtTime(clampFilterQ(settings.filterQ), when);
@@ -861,8 +896,17 @@ class PlaybackLayer {
 
     oscillator.connect(waveGain);
     noiseSource.connect(noiseGain);
-    waveGain.connect(filterNode);
-    noiseGain.connect(filterNode);
+    waveGain.connect(foldInput);
+    noiseGain.connect(foldInput);
+    if (useWaveFold) {
+      foldInput.connect(waveShaper);
+      waveShaper.connect(filterNode);
+    } else {
+      foldInput.connect(filterNode);
+    }
+    if (settings.voiceIndex === this.state.selectedVoiceIndex) {
+      filterNode.connect(this.synthScopeAnalyser);
+    }
     filterNode.connect(ampGain);
     ampGain.connect(busInput);
 
@@ -877,6 +921,8 @@ class PlaybackLayer {
       noiseSource.disconnect?.();
       waveGain.disconnect?.();
       noiseGain.disconnect?.();
+      foldInput.disconnect?.();
+      waveShaper.disconnect?.();
       filterNode.disconnect?.();
       ampGain.disconnect?.();
     }, Math.max(0, disconnectDelayMs));
@@ -892,10 +938,12 @@ class PlaybackLayer {
           wave: playbackTrack.synthWave,
           tuneMidi: pitchOverride?.pitchMidi ?? playbackTrack.synthTuneMidi,
           noiseMix: playbackTrack.synthNoiseMix,
+          foldAmount: playbackTrack.synthFoldAmount,
           filterType: playbackTrack.synthFilterType,
           filterFrequency: playbackTrack.synthFilterFrequency,
           filterQ: playbackTrack.synthFilterQ,
           envelope: playbackTrack.envelope,
+          voiceIndex: playbackTrack.voiceIndex,
         },
         when,
         noteDuration,
@@ -1066,6 +1114,7 @@ function createVoiceConfig(id) {
     synthWave: "sine",
     synthTuneMidi: SYNTH_TUNE_DEFAULT_MIDI,
     synthNoiseMix: 0,
+    synthFoldAmount: 0,
     synthFilterType: "lowpass",
     synthFilterFrequency: 3200,
     synthFilterQ: 0.8,
@@ -1087,6 +1136,7 @@ const state = {
   voices: Array.from({ length: TRACK_COUNT }, (_, index) => createVoiceConfig(index + 1)),
   trackPlaybackState: Array.from({ length: TRACK_COUNT }, (_, index) => createTrackPlaybackState(createTrack(index + 1))),
   trackIndicators: Array.from({ length: TRACK_COUNT }, () => null),
+  synthScopeAnimationFrameId: null,
   sampleBrowserOpen: false,
   overviewDrag: {
     active: false,
@@ -1241,6 +1291,7 @@ function normalizeVoice(index, source = {}) {
     synthWave: SYNTH_WAVES.includes(source.synthWave) ? source.synthWave : fallback.synthWave,
     synthTuneMidi: clampMidiNote(source.synthTuneMidi ?? fallback.synthTuneMidi, fallback.synthTuneMidi),
     synthNoiseMix: clampNoiseMix(source.synthNoiseMix ?? fallback.synthNoiseMix, fallback.synthNoiseMix),
+    synthFoldAmount: clampSynthFoldAmount(source.synthFoldAmount ?? fallback.synthFoldAmount, fallback.synthFoldAmount),
     synthFilterType: FILTER_TYPES.includes(source.synthFilterType) ? source.synthFilterType : fallback.synthFilterType,
     synthFilterFrequency: clampFilterFrequency(source.synthFilterFrequency ?? fallback.synthFilterFrequency),
     synthFilterQ: clampFilterQ(source.synthFilterQ ?? fallback.synthFilterQ),
@@ -1276,6 +1327,7 @@ function writeStoredSession() {
       synthWave: voice.synthWave,
       synthTuneMidi: voice.synthTuneMidi,
       synthNoiseMix: voice.synthNoiseMix,
+      synthFoldAmount: voice.synthFoldAmount,
       synthFilterType: voice.synthFilterType,
       synthFilterFrequency: voice.synthFilterFrequency,
       synthFilterQ: voice.synthFilterQ,
@@ -1884,6 +1936,60 @@ function ensureMixerAnimation() {
   state.mixerAnimationFrameId = window.requestAnimationFrame(animateMixerModulation);
 }
 
+function drawSynthScopeFrame() {
+  if (!(ui.synthWaveformScope instanceof HTMLCanvasElement)) {
+    state.synthScopeAnimationFrameId = null;
+    return;
+  }
+  const context = ui.synthWaveformScope.getContext("2d");
+  const analyser = state.playback?.synthScopeAnalyser;
+  if (!context || !analyser) {
+    state.synthScopeAnimationFrameId = window.requestAnimationFrame(drawSynthScopeFrame);
+    return;
+  }
+
+  const { width, height } = ui.synthWaveformScope;
+  context.clearRect(0, 0, width, height);
+  context.fillStyle = "rgba(255, 255, 255, 0.015)";
+  context.fillRect(0, 0, width, height);
+
+  const midY = height / 2;
+  context.strokeStyle = "rgba(126, 205, 185, 0.12)";
+  context.lineWidth = 1;
+  context.beginPath();
+  context.moveTo(0, midY);
+  context.lineTo(width, midY);
+  context.stroke();
+
+  if (getSelectedVoice().mode !== "synth") {
+    context.fillStyle = "rgba(158, 189, 178, 0.8)";
+    context.font = '12px "Quicksand", sans-serif';
+    context.fillText("Select a synth voice to monitor its waveform.", 12, midY + 4);
+    state.synthScopeAnimationFrameId = window.requestAnimationFrame(drawSynthScopeFrame);
+    return;
+  }
+
+  const data = new Uint8Array(analyser.fftSize);
+  analyser.getByteTimeDomainData(data);
+  context.strokeStyle = "#4fc4b8";
+  context.lineWidth = 2;
+  context.beginPath();
+  for (let index = 0; index < data.length; index += 1) {
+    const x = (index / (data.length - 1)) * width;
+    const y = (data[index] / 255) * height;
+    if (index === 0) context.moveTo(x, y);
+    else context.lineTo(x, y);
+  }
+  context.stroke();
+
+  state.synthScopeAnimationFrameId = window.requestAnimationFrame(drawSynthScopeFrame);
+}
+
+function ensureSynthScopeAnimation() {
+  if (state.synthScopeAnimationFrameId) return;
+  state.synthScopeAnimationFrameId = window.requestAnimationFrame(drawSynthScopeFrame);
+}
+
 function getTrackVoice(track) {
   return state.voices[Math.max(0, Math.min(TRACK_COUNT - 1, track.voiceIndex ?? 0))] ?? createVoiceConfig(1);
 }
@@ -1906,6 +2012,7 @@ function getTrackPlaybackSettings(track) {
     synthWave: voice.synthWave,
     synthTuneMidi: voice.synthTuneMidi,
     synthNoiseMix: voice.synthNoiseMix,
+    synthFoldAmount: voice.synthFoldAmount,
     synthFilterType: voice.synthFilterType,
     synthFilterFrequency: voice.synthFilterFrequency,
     synthFilterQ: voice.synthFilterQ,
@@ -3237,6 +3344,8 @@ function syncUi() {
   ui.synthTune.value = String(voice.synthTuneMidi);
   ui.synthNoiseMixKnob.style.setProperty("--rotary-angle", `${getRotaryAngleFromPercent(voice.synthNoiseMix)}deg`);
   ui.synthNoiseMixValue.textContent = `${Math.round(voice.synthNoiseMix)}%`;
+  ui.synthFold.value = String(voice.synthFoldAmount);
+  ui.synthFoldValue.textContent = `${Math.round(voice.synthFoldAmount)}%`;
   ui.synthFilterType.value = voice.synthFilterType;
   ui.synthFilterFrequency.value = String(voice.synthFilterFrequency);
   ui.synthFilterFrequencyValue.textContent = formatFilterFrequencyValue(voice.synthFilterFrequency);
@@ -3568,6 +3677,7 @@ ui.chopGate.addEventListener("input", () => updateSelectedVoice({ chopGate: Numb
 ui.reverse.addEventListener("change", () => updateSelectedVoice({ reverse: ui.reverse.checked }));
 ui.synthWave.addEventListener("change", () => updateSelectedVoice({ synthWave: ui.synthWave.value }));
 ui.synthTune.addEventListener("change", () => updateSelectedVoice({ synthTuneMidi: Number(ui.synthTune.value) }));
+ui.synthFold.addEventListener("input", () => updateSelectedVoice({ synthFoldAmount: Number(ui.synthFold.value) }));
 ui.synthFilterType.addEventListener("change", () => updateSelectedVoice({ synthFilterType: ui.synthFilterType.value }));
 ui.synthFilterFrequency.addEventListener("input", () => updateSelectedVoice({ synthFilterFrequency: Number(ui.synthFilterFrequency.value) }));
 ui.synthFilterQ.addEventListener("input", () => updateSelectedVoice({ synthFilterQ: Number(ui.synthFilterQ.value) }));
@@ -3760,6 +3870,7 @@ applyStoredSession();
 syncTransportButton();
 syncUi();
 drawWaveform();
+ensureSynthScopeAnimation();
 renderSampleLibrary();
 syncSampleBrowserOverlay();
 renderTrackSelector();

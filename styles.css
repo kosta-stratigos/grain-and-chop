@@ -187,24 +187,24 @@ button.primary,
   grid-row: 2;
 }
 
-.pane-sequence-patterns {
+.pane-track-effects {
   grid-column: 1;
   grid-row: 3 / span 2;
 }
 
-.pane-track-effects {
-  grid-column: 2;
-  grid-row: 3 / span 2;
-}
-
 .pane-voices {
-  grid-column: 3 / span 2;
+  grid-column: 2 / span 3;
   grid-row: 3 / span 2;
 }
 
 .pane-composer {
   grid-column: 5 / span 2;
-  grid-row: 3 / span 2;
+  grid-row: 3;
+}
+
+.pane-sequence-patterns {
+  grid-column: 5 / span 2;
+  grid-row: 4;
 }
 
 .legacy-sample-shell {
@@ -646,6 +646,17 @@ h2 {
   gap: 10px;
 }
 
+.synth-settings-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(220px, 0.85fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.synth-control-grid {
+  grid-template-columns: 1fr;
+}
+
 .voice-type-control,
 .synth-settings-group,
 .sample-voice-settings-group {
@@ -709,6 +720,21 @@ h2 {
   background: var(--text);
   transform-origin: 50% 10px;
   transform: rotate(var(--rotary-angle, -135deg));
+}
+
+.synth-visual-group {
+  align-content: start;
+}
+
+.synth-waveform-scope {
+  width: 100%;
+  height: 118px;
+  display: block;
+  border: 1px solid rgba(126, 205, 185, 0.14);
+  border-radius: var(--pane-radius);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 48%),
+    rgba(255, 255, 255, 0.018);
 }
 
 .control-group {
@@ -1367,6 +1393,10 @@ input[type="range"]::-moz-range-thumb {
   }
 
   .track-settings-stack {
+    grid-template-columns: 1fr;
+  }
+
+  .synth-settings-layout {
     grid-template-columns: 1fr;
   }
 
