@@ -1880,6 +1880,17 @@ function getTrackPlaybackHighlightMidi(track) {
   return getTrackStepPitchMidi(track, triggeredIndex);
 }
 
+function getSelectedSynthScopeFrequency() {
+  const selectedVoice = getSelectedVoice();
+  if (selectedVoice.mode !== "synth") return null;
+  for (const track of state.tracks) {
+    if (track.voiceIndex !== state.selectedVoiceIndex) continue;
+    const activePitch = getTrackPlaybackHighlightMidi(track);
+    if (Number.isFinite(activePitch)) return midiToFrequency(activePitch);
+  }
+  return midiToFrequency(selectedVoice.synthTuneMidi);
+}
+
 function isMidiNoteInTrackScale(track, midiNote) {
   const scale = getScaleDefinition(track.scaleMode);
   if (scale.value === "chromatic") return true;
@@ -2047,12 +2058,42 @@ function drawSynthScopeFrame() {
 
   const data = new Uint8Array(analyser.fftSize);
   analyser.getByteTimeDomainData(data);
+  const targetFrequency = getSelectedSynthScopeFrequency();
+  const samplesPerCycle = Number.isFinite(targetFrequency) && targetFrequency > 0
+    ? Math.max(24, Math.min(data.length / 2, Math.round(analyser.context.sampleRate / targetFrequency)))
+    : Math.max(48, Math.round(data.length / 6));
+  const centerValue = 128;
+  let startIndex = 0;
+  for (let index = 1; index < data.length - samplesPerCycle - 2; index += 1) {
+    const previous = data[index - 1];
+    const current = data[index];
+    if (previous < centerValue && current >= centerValue) {
+      startIndex = index;
+      break;
+    }
+  }
+  let bestIndex = startIndex;
+  let bestSlope = -Infinity;
+  const searchEnd = Math.min(data.length - samplesPerCycle - 2, startIndex + samplesPerCycle * 2);
+  for (let index = startIndex; index <= searchEnd; index += 1) {
+    const previous = data[index - 1] ?? data[index];
+    const current = data[index];
+    if (previous < centerValue && current >= centerValue) {
+      const slope = current - previous;
+      if (slope > bestSlope) {
+        bestSlope = slope;
+        bestIndex = index;
+      }
+    }
+  }
+
   context.strokeStyle = "#4fc4b8";
   context.lineWidth = 2;
   context.beginPath();
-  for (let index = 0; index < data.length; index += 1) {
-    const x = (index / (data.length - 1)) * width;
-    const y = (data[index] / 255) * height;
+  for (let index = 0; index < samplesPerCycle; index += 1) {
+    const sampleIndex = Math.min(data.length - 1, bestIndex + index);
+    const x = (index / Math.max(1, samplesPerCycle - 1)) * width;
+    const y = (data[sampleIndex] / 255) * height;
     if (index === 0) context.moveTo(x, y);
     else context.lineTo(x, y);
   }
