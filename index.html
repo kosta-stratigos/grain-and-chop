@@ -339,6 +339,41 @@
                 <span id="track-step-probability-value" class="value-pill">100%</span>
               </div>
             </label>
+            <section class="control-group nested-control-group track-step-fill-group" aria-labelledby="track-envelope-title">
+              <div class="control-group-head">
+                <h3 id="track-envelope-title">ADSR Envelope</h3>
+              </div>
+              <div class="control-grid track-settings-grid">
+                <label class="compact-field">
+                  Attack (ms)
+                  <div class="slider-row">
+                    <input id="track-envelope-attack" type="range" min="0" max="2000" step="1" value="10" />
+                    <span id="track-envelope-attack-value" class="value-pill">10</span>
+                  </div>
+                </label>
+                <label class="compact-field">
+                  Decay (ms)
+                  <div class="slider-row">
+                    <input id="track-envelope-decay" type="range" min="0" max="2000" step="1" value="80" />
+                    <span id="track-envelope-decay-value" class="value-pill">80</span>
+                  </div>
+                </label>
+                <label class="compact-field">
+                  Sustain (%)
+                  <div class="slider-row">
+                    <input id="track-envelope-sustain" type="range" min="0" max="100" step="1" value="70" />
+                    <span id="track-envelope-sustain-value" class="value-pill">70%</span>
+                  </div>
+                </label>
+                <label class="compact-field">
+                  Release (ms)
+                  <div class="slider-row">
+                    <input id="track-envelope-release" type="range" min="0" max="3000" step="1" value="120" />
+                    <span id="track-envelope-release-value" class="value-pill">120</span>
+                  </div>
+                </label>
+              </div>
+            </section>
             <section class="control-group nested-control-group track-step-fill-group" aria-labelledby="track-step-fill-title">
               <div class="control-group-head">
                 <h3 id="track-step-fill-title">Step Fill</h3>

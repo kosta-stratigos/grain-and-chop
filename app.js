@@ -96,6 +96,14 @@ const ui = {
   trackPlaybackMode: document.querySelector("#track-playback-mode"),
   trackStepProbability: document.querySelector("#track-step-probability"),
   trackStepProbabilityValue: document.querySelector("#track-step-probability-value"),
+  trackEnvelopeAttack: document.querySelector("#track-envelope-attack"),
+  trackEnvelopeAttackValue: document.querySelector("#track-envelope-attack-value"),
+  trackEnvelopeDecay: document.querySelector("#track-envelope-decay"),
+  trackEnvelopeDecayValue: document.querySelector("#track-envelope-decay-value"),
+  trackEnvelopeSustain: document.querySelector("#track-envelope-sustain"),
+  trackEnvelopeSustainValue: document.querySelector("#track-envelope-sustain-value"),
+  trackEnvelopeRelease: document.querySelector("#track-envelope-release"),
+  trackEnvelopeReleaseValue: document.querySelector("#track-envelope-release-value"),
   trackStepFillType: document.querySelector("#track-step-fill-type"),
   trackStepFillAmount: document.querySelector("#track-step-fill-amount"),
   trackStepFillAmountValue: document.querySelector("#track-step-fill-amount-value"),
@@ -275,6 +283,15 @@ function createDefaultPitchFillSettings() {
   };
 }
 
+function createDefaultTrackEnvelope() {
+  return {
+    attack: 10,
+    decay: 80,
+    sustain: 70,
+    release: 120,
+  };
+}
+
 function normalizeFilterSettings(source = {}, fallback = createDefaultFilterSettings()) {
   return {
     enabled: Boolean(source.enabled),
@@ -301,6 +318,15 @@ function normalizePitchFillSettings(source = {}, fallback = createDefaultPitchFi
     type,
     from: Math.min(from, to),
     to: Math.max(from, to),
+  };
+}
+
+function normalizeTrackEnvelope(source = {}, fallback = createDefaultTrackEnvelope()) {
+  return {
+    attack: Math.max(0, Math.min(2000, Number(source.attack) || fallback.attack)),
+    decay: Math.max(0, Math.min(2000, Number(source.decay) || fallback.decay)),
+    sustain: Math.max(0, Math.min(100, Number.isFinite(Number(source.sustain)) ? Number(source.sustain) : fallback.sustain)),
+    release: Math.max(0, Math.min(3000, Number(source.release) || fallback.release)),
   };
 }
 
@@ -370,6 +396,42 @@ function populatePitchFillNoteOptions() {
     toOption.textContent = formatMidiNote(midiNote);
     ui.trackPitchFillTo.append(toOption);
   }
+}
+
+function applyAdsrToGain(gainParam, when, gateDuration, envelope, peakLevel = 1) {
+  const attack = Math.max(0, (envelope?.attack ?? 0) / 1000);
+  const decay = Math.max(0, (envelope?.decay ?? 0) / 1000);
+  const sustainLevel = Math.max(0, Math.min(1, (envelope?.sustain ?? 100) / 100));
+  const release = Math.max(0, (envelope?.release ?? 0) / 1000);
+  const peak = Math.max(0.0001, peakLevel);
+  const sustainGain = Math.max(0.0001, peak * sustainLevel);
+  const attackEnd = when + attack;
+  const decayEnd = attackEnd + decay;
+  const releaseStart = when + Math.max(Math.max(0.001, gateDuration), attack + decay);
+
+  gainParam.cancelScheduledValues(when);
+  gainParam.setValueAtTime(0.0001, when);
+  if (attack > 0) {
+    gainParam.linearRampToValueAtTime(peak, attackEnd);
+  } else {
+    gainParam.setValueAtTime(peak, when);
+  }
+  if (decay > 0) {
+    gainParam.linearRampToValueAtTime(sustainGain, decayEnd);
+  } else {
+    gainParam.setValueAtTime(sustainGain, attackEnd);
+  }
+  gainParam.setValueAtTime(sustainGain, releaseStart);
+  if (release > 0) {
+    gainParam.linearRampToValueAtTime(0.0001, releaseStart + release);
+  } else {
+    gainParam.setValueAtTime(0.0001, releaseStart);
+  }
+
+  return {
+    releaseStart,
+    stopTime: releaseStart + release,
+  };
 }
 
 function formatSynthWaveLabel(wave) {
@@ -612,13 +674,12 @@ class PlaybackLayer {
     duration,
     rate,
     reverse = false,
-    attack = 0.01,
-    release = 0.02,
     level = 1,
     loop = false,
     loopStart = 0,
     loopEnd = 0,
     sustainDuration = null,
+    envelope = createDefaultTrackEnvelope(),
   }) {
     const baseBuffer = this.sampleLayer.buffer;
     const buffer = reverse ? this.sampleLayer.reversedBuffer : baseBuffer;
@@ -632,11 +693,8 @@ class PlaybackLayer {
     const maxOffset = Math.max(0, buffer.duration - safeDuration);
 
     const voiceGain = this.audioContext.createGain();
-    const holdDuration = loop ? Math.max(safeDuration, sustainDuration ?? safeDuration) : safeDuration;
-    voiceGain.gain.setValueAtTime(0.0001, when);
-    voiceGain.gain.linearRampToValueAtTime(0.75 * level, when + attack);
-    voiceGain.gain.setValueAtTime(0.75 * level, when + holdDuration);
-    voiceGain.gain.linearRampToValueAtTime(0.0001, when + holdDuration + release);
+    const gateDuration = loop ? Math.max(safeDuration, sustainDuration ?? safeDuration) : Math.max(safeDuration, sustainDuration ?? safeDuration);
+    const envelopeTiming = applyAdsrToGain(voiceGain.gain, when, gateDuration, envelope, 0.75 * level);
 
     source.connect(voiceGain);
     const busInput = this.trackBuses?.[trackIndex]?.input ?? this.output;
@@ -644,7 +702,7 @@ class PlaybackLayer {
 
     const intendedOffset = reverse ? buffer.duration - offset - safeDuration : offset;
     const playbackOffset = Math.max(0, Math.min(maxOffset, intendedOffset));
-    const baseStopTime = when + holdDuration + release;
+    const baseStopTime = envelopeTiming.stopTime;
     const disconnectDelayMs = Math.ceil((baseStopTime - this.audioContext.currentTime + 0.1) * 1000);
 
     if (loop) {
@@ -662,7 +720,7 @@ class PlaybackLayer {
       return true;
     }
     source.start(when, playbackOffset, safeDuration);
-    source.stop(when + safeDuration + release);
+    source.stop(Math.max(when + safeDuration, baseStopTime));
     window.setTimeout(() => {
       source.disconnect?.();
       voiceGain.disconnect?.();
@@ -690,7 +748,6 @@ class PlaybackLayer {
     const loopPosition = Math.max(startTime, Math.min(maxPosition, sliceStart));
 
     if (settings.voicePlaybackMode && settings.voicePlaybackMode !== "one-shot") {
-      const smoothLoop = settings.voicePlaybackMode === "smooth-loop";
       return this.createVoice({
         trackIndex: settings.trackIndex,
         when,
@@ -698,13 +755,12 @@ class PlaybackLayer {
         duration: Math.min(grainDuration, buffer.duration - loopPosition),
         rate,
         reverse: settings.reverse,
-        attack: smoothLoop ? Math.min(0.02, grainDuration * 0.2) : 0.002,
-        release: smoothLoop ? Math.min(0.03, grainDuration * 0.28) : 0.004,
         level: settings.level ?? 1,
         loop: true,
         loopStart: loopPosition,
         loopEnd: Math.min(endTime, loopPosition + grainDuration),
         sustainDuration: Math.max(grainDuration, noteDuration),
+        envelope: settings.envelope,
       });
     }
 
@@ -720,9 +776,9 @@ class PlaybackLayer {
           duration: Math.min(grainDuration, buffer.duration - position),
           rate,
           reverse: settings.reverse,
-          attack: grainDuration * 0.2,
-          release: grainDuration * 0.35,
           level: settings.level ?? 1,
+          sustainDuration: Math.max(grainDuration, noteDuration),
+          envelope: settings.envelope,
         }) || triggered;
     }
 
@@ -740,7 +796,6 @@ class PlaybackLayer {
     const placementOffset = startTime + Math.max(0, endTime - startTime - baseSliceDuration) * ((track.voicePlacement ?? 50) / 100);
     const offset = track.grainLocation === "fixed" ? placementOffset : slice.start;
     if (track.voicePlaybackMode && track.voicePlaybackMode !== "one-shot") {
-      const smoothLoop = track.voicePlaybackMode === "smooth-loop";
       return this.createVoice({
         trackIndex: track.id - 1,
         when,
@@ -748,13 +803,12 @@ class PlaybackLayer {
         duration: Math.max(0.03, Math.min(baseSliceDuration, endTime - offset)),
         rate,
         reverse: track.reverse,
-        attack: smoothLoop ? 0.01 : 0.002,
-        release: smoothLoop ? 0.02 : 0.004,
         level: 1,
         loop: true,
         loopStart: offset,
         loopEnd: Math.min(endTime, offset + baseSliceDuration),
         sustainDuration: Math.max(baseSliceDuration, noteDuration),
+        envelope: track.envelope,
       });
     }
     return this.createVoice({
@@ -764,9 +818,9 @@ class PlaybackLayer {
       duration: Math.max(0.03, Math.min(baseSliceDuration, endTime - offset)),
       rate,
       reverse: track.reverse,
-      attack: 0.004,
-      release: 0.03,
       level: 1,
+      sustainDuration: Math.max(baseSliceDuration, noteDuration),
+      envelope: track.envelope,
     });
   }
 
@@ -783,7 +837,6 @@ class PlaybackLayer {
     const holdDuration = Math.max(0.05, noteDuration);
     const noiseMix = clampNoiseMix(settings.noiseMix, 0) / 100;
     const waveMix = 1 - noiseMix;
-    const stopTime = when + holdDuration + release;
 
     oscillator.type = SYNTH_WAVES.includes(settings.wave) ? settings.wave : "sine";
     oscillator.frequency.setValueAtTime(frequency, when);
@@ -796,10 +849,14 @@ class PlaybackLayer {
     filterNode.frequency.setValueAtTime(clampFilterFrequency(settings.filterFrequency), when);
     filterNode.Q.setValueAtTime(clampFilterQ(settings.filterQ), when);
 
-    ampGain.gain.setValueAtTime(0.0001, when);
-    ampGain.gain.linearRampToValueAtTime(0.7, when + 0.01);
-    ampGain.gain.setValueAtTime(0.7, when + holdDuration);
-    ampGain.gain.linearRampToValueAtTime(0.0001, stopTime);
+    const envelopeTiming = applyAdsrToGain(
+      ampGain.gain,
+      when,
+      holdDuration,
+      settings.envelope,
+      0.7,
+    );
+    const stopTime = envelopeTiming.stopTime;
 
     oscillator.connect(waveGain);
     noiseSource.connect(noiseGain);
@@ -837,6 +894,7 @@ class PlaybackLayer {
           filterType: playbackTrack.synthFilterType,
           filterFrequency: playbackTrack.synthFilterFrequency,
           filterQ: playbackTrack.synthFilterQ,
+          envelope: playbackTrack.envelope,
         },
         when,
         noteDuration,
@@ -856,6 +914,7 @@ class PlaybackLayer {
           grainLocation: playbackTrack.grainLocation,
           voicePlacement: playbackTrack.voicePlacement,
           voicePlaybackMode: playbackTrack.voicePlaybackMode,
+          envelope: playbackTrack.envelope,
         },
         when,
         sliceIndex,
@@ -971,6 +1030,7 @@ function createTrack(id) {
     stepCount: 16,
     playbackMode: "forward",
     stepProbability: 100,
+    envelope: createDefaultTrackEnvelope(),
     stepFill: createDefaultStepFillSettings(),
     pitchFill: createDefaultPitchFillSettings(),
     stepPitches: Array.from({ length: MAX_PATTERN_CELLS }, () => null),
@@ -1140,6 +1200,7 @@ function normalizeTrack(index, source = {}) {
       0,
       Math.min(100, Number.isFinite(Number(source.stepProbability)) ? Number(source.stepProbability) : fallback.stepProbability),
     ),
+    envelope: normalizeTrackEnvelope(source.envelope ?? fallback.envelope, fallback.envelope),
     stepFill: normalizeStepFillSettings(source.stepFill ?? fallback.stepFill, fallback.stepFill),
     pitchFill: normalizePitchFillSettings(source.pitchFill ?? fallback.pitchFill, fallback.pitchFill),
     stepPitches: Array.from({ length: MAX_PATTERN_CELLS }, (_, step) => {
@@ -1226,6 +1287,7 @@ function writeStoredSession() {
       stepCount: track.stepCount,
       playbackMode: track.playbackMode,
       stepProbability: track.stepProbability,
+      envelope: { ...track.envelope },
       stepFill: { ...track.stepFill },
       pitchFill: { ...track.pitchFill },
       stepPitches: track.stepPitches.slice(0, MAX_PATTERN_CELLS),
@@ -2223,6 +2285,14 @@ function syncTrackSettingsOverlay() {
   ui.trackPlaybackMode.value = track.playbackMode;
   ui.trackStepProbability.value = String(track.stepProbability);
   ui.trackStepProbabilityValue.textContent = `${track.stepProbability}%`;
+  ui.trackEnvelopeAttack.value = String(track.envelope.attack);
+  ui.trackEnvelopeAttackValue.textContent = String(track.envelope.attack);
+  ui.trackEnvelopeDecay.value = String(track.envelope.decay);
+  ui.trackEnvelopeDecayValue.textContent = String(track.envelope.decay);
+  ui.trackEnvelopeSustain.value = String(track.envelope.sustain);
+  ui.trackEnvelopeSustainValue.textContent = `${track.envelope.sustain}%`;
+  ui.trackEnvelopeRelease.value = String(track.envelope.release);
+  ui.trackEnvelopeReleaseValue.textContent = String(track.envelope.release);
   ui.trackStepFillType.value = track.stepFill.type;
   ui.trackStepFillAmount.value = String(track.stepFill.amount);
   ui.trackStepFillAmountValue.textContent = `${track.stepFill.amount}%`;
@@ -3364,6 +3434,38 @@ ui.voicePlaybackMode.addEventListener("change", () => updateSelectedVoice({ voic
 ui.trackSteps.addEventListener("input", () => updateSelectedTrack({ stepCount: Number(ui.trackSteps.value) }));
 ui.trackPlaybackMode.addEventListener("change", () => updateSelectedTrack({ playbackMode: ui.trackPlaybackMode.value }));
 ui.trackStepProbability.addEventListener("input", () => updateSelectedTrack({ stepProbability: Number(ui.trackStepProbability.value) }));
+ui.trackEnvelopeAttack.addEventListener("input", () => {
+  updateSelectedTrack({
+    envelope: normalizeTrackEnvelope({
+      ...getSelectedTrack().envelope,
+      attack: Number(ui.trackEnvelopeAttack.value),
+    }, getSelectedTrack().envelope),
+  });
+});
+ui.trackEnvelopeDecay.addEventListener("input", () => {
+  updateSelectedTrack({
+    envelope: normalizeTrackEnvelope({
+      ...getSelectedTrack().envelope,
+      decay: Number(ui.trackEnvelopeDecay.value),
+    }, getSelectedTrack().envelope),
+  });
+});
+ui.trackEnvelopeSustain.addEventListener("input", () => {
+  updateSelectedTrack({
+    envelope: normalizeTrackEnvelope({
+      ...getSelectedTrack().envelope,
+      sustain: Number(ui.trackEnvelopeSustain.value),
+    }, getSelectedTrack().envelope),
+  });
+});
+ui.trackEnvelopeRelease.addEventListener("input", () => {
+  updateSelectedTrack({
+    envelope: normalizeTrackEnvelope({
+      ...getSelectedTrack().envelope,
+      release: Number(ui.trackEnvelopeRelease.value),
+    }, getSelectedTrack().envelope),
+  });
+});
 ui.patternVoiceSelect.addEventListener("change", () => {
   updateSelectedTrack({ voiceIndex: Number(ui.patternVoiceSelect.value) });
 });
