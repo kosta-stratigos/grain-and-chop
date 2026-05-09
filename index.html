@@ -213,9 +213,23 @@
                       <option value="square">Square</option>
                     </select>
                   </label>
+                  <label class="compact-field">
+                    Wave Shape
+                    <div class="slider-row">
+                      <input id="synth-wave-shape" type="range" min="0" max="100" value="50" />
+                      <span id="synth-wave-shape-value" class="value-pill">50%</span>
+                    </div>
+                  </label>
                   <label class="compact-field" id="synth-tune-field">
                     Tune
                     <select id="synth-tune"></select>
+                  </label>
+                  <label class="compact-field">
+                    Amplitude
+                    <div class="slider-row">
+                      <input id="synth-level" type="range" min="0" max="100" value="70" />
+                      <span id="synth-level-value" class="value-pill">70%</span>
+                    </div>
                   </label>
                   <div class="rotary-field">
                     <span>Wave / Noise Mix</span>

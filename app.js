@@ -44,8 +44,12 @@ const ui = {
   chopGateValue: document.querySelector("#chop-gate-value"),
   reverse: document.querySelector("#reverse"),
   synthWave: document.querySelector("#synth-wave"),
+  synthWaveShape: document.querySelector("#synth-wave-shape"),
+  synthWaveShapeValue: document.querySelector("#synth-wave-shape-value"),
   synthTuneField: document.querySelector("#synth-tune-field"),
   synthTune: document.querySelector("#synth-tune"),
+  synthLevel: document.querySelector("#synth-level"),
+  synthLevelValue: document.querySelector("#synth-level-value"),
   synthNoiseMixKnob: document.querySelector("#synth-noise-mix-knob"),
   synthNoiseMixValue: document.querySelector("#synth-noise-mix-value"),
   synthFold: document.querySelector("#synth-fold"),
@@ -229,6 +233,16 @@ function clampNoiseMix(value, fallback = 0) {
 }
 
 function clampSynthFoldAmount(value, fallback = 0) {
+  const resolved = Number.isFinite(Number(value)) ? Number(value) : fallback;
+  return Math.max(0, Math.min(100, resolved));
+}
+
+function clampSynthLevel(value, fallback = 70) {
+  const resolved = Number.isFinite(Number(value)) ? Number(value) : fallback;
+  return Math.max(0, Math.min(100, resolved));
+}
+
+function clampSynthWaveShape(value, fallback = 50) {
   const resolved = Number.isFinite(Number(value)) ? Number(value) : fallback;
   return Math.max(0, Math.min(100, resolved));
 }
@@ -471,6 +485,57 @@ function buildWaveFoldCurve(amount, sampleCount = 4096) {
     curve[index] = y;
   }
   return curve;
+}
+
+function buildPeriodicWaveFromSamples(audioContext, samples, harmonicCount = 64) {
+  const sampleCount = samples.length;
+  const real = new Float32Array(harmonicCount + 1);
+  const imag = new Float32Array(harmonicCount + 1);
+  for (let harmonic = 1; harmonic <= harmonicCount; harmonic += 1) {
+    let realSum = 0;
+    let imagSum = 0;
+    for (let sampleIndex = 0; sampleIndex < sampleCount; sampleIndex += 1) {
+      const phase = (Math.PI * 2 * harmonic * sampleIndex) / sampleCount;
+      const sample = samples[sampleIndex];
+      realSum += sample * Math.cos(phase);
+      imagSum += sample * Math.sin(phase);
+    }
+    real[harmonic] = (2 / sampleCount) * realSum;
+    imag[harmonic] = (2 / sampleCount) * imagSum;
+  }
+  return audioContext.createPeriodicWave(real, imag, { disableNormalization: false });
+}
+
+function createSynthWaveSamples(wave, shapeAmount, sampleCount = 1024) {
+  const samples = new Float32Array(sampleCount);
+  const shape = clampSynthWaveShape(shapeAmount, 50) / 100;
+  const pivot = 0.05 + shape * 0.9;
+  const safePivot = Math.max(0.01, Math.min(0.99, pivot));
+
+  for (let index = 0; index < sampleCount; index += 1) {
+    const phase = index / sampleCount;
+    if (wave === "square") {
+      samples[index] = phase < safePivot ? 1 : -1;
+      continue;
+    }
+    if (wave === "sawtooth" || wave === "triangle") {
+      if (phase < safePivot) {
+        samples[index] = -1 + (phase / safePivot) * 2;
+      } else {
+        samples[index] = 1 - ((phase - safePivot) / (1 - safePivot)) * 2;
+      }
+      continue;
+    }
+    samples[index] = Math.sin(phase * Math.PI * 2);
+  }
+
+  return samples;
+}
+
+function createSynthPeriodicWave(audioContext, wave, shapeAmount) {
+  if (wave === "sine") return null;
+  const harmonics = wave === "square" ? 96 : 64;
+  return buildPeriodicWaveFromSamples(audioContext, createSynthWaveSamples(wave, shapeAmount), harmonics);
 }
 
 class SampleLayer {
@@ -869,10 +934,13 @@ class PlaybackLayer {
     const holdDuration = Math.max(0.05, noteDuration);
     const noiseMix = clampNoiseMix(settings.noiseMix, 0) / 100;
     const waveMix = 1 - noiseMix;
+    const synthLevel = clampSynthLevel(settings.level, 70) / 100;
     const foldAmount = clampSynthFoldAmount(settings.foldAmount, 0);
     const useWaveFold = foldAmount > 0.1;
+    const periodicWave = createSynthPeriodicWave(this.audioContext, settings.wave, settings.waveShape);
 
     oscillator.type = SYNTH_WAVES.includes(settings.wave) ? settings.wave : "sine";
+    if (periodicWave) oscillator.setPeriodicWave(periodicWave);
     oscillator.frequency.setValueAtTime(frequency, when);
     noiseSource.buffer = this.noiseBuffer;
     noiseSource.loop = true;
@@ -890,7 +958,7 @@ class PlaybackLayer {
       when,
       holdDuration,
       settings.envelope,
-      0.7,
+      synthLevel,
     );
     const stopTime = envelopeTiming.stopTime;
 
@@ -936,7 +1004,9 @@ class PlaybackLayer {
         {
           trackIndex: playbackTrack.trackIndex,
           wave: playbackTrack.synthWave,
+          waveShape: playbackTrack.synthWaveShape,
           tuneMidi: pitchOverride?.pitchMidi ?? playbackTrack.synthTuneMidi,
+          level: playbackTrack.synthLevel,
           noiseMix: playbackTrack.synthNoiseMix,
           foldAmount: playbackTrack.synthFoldAmount,
           filterType: playbackTrack.synthFilterType,
@@ -1112,7 +1182,9 @@ function createVoiceConfig(id) {
     chopGate: 70,
     sliceCount: 8,
     synthWave: "sine",
+    synthWaveShape: 50,
     synthTuneMidi: SYNTH_TUNE_DEFAULT_MIDI,
+    synthLevel: 70,
     synthNoiseMix: 0,
     synthFoldAmount: 0,
     synthFilterType: "lowpass",
@@ -1289,7 +1361,9 @@ function normalizeVoice(index, source = {}) {
     chopGate: Math.max(10, Math.min(100, Number(source.chopGate) || fallback.chopGate)),
     sliceCount: Math.max(2, Math.min(16, Number(source.sliceCount) || fallback.sliceCount)),
     synthWave: SYNTH_WAVES.includes(source.synthWave) ? source.synthWave : fallback.synthWave,
+    synthWaveShape: clampSynthWaveShape(source.synthWaveShape ?? fallback.synthWaveShape, fallback.synthWaveShape),
     synthTuneMidi: clampMidiNote(source.synthTuneMidi ?? fallback.synthTuneMidi, fallback.synthTuneMidi),
+    synthLevel: clampSynthLevel(source.synthLevel ?? fallback.synthLevel, fallback.synthLevel),
     synthNoiseMix: clampNoiseMix(source.synthNoiseMix ?? fallback.synthNoiseMix, fallback.synthNoiseMix),
     synthFoldAmount: clampSynthFoldAmount(source.synthFoldAmount ?? fallback.synthFoldAmount, fallback.synthFoldAmount),
     synthFilterType: FILTER_TYPES.includes(source.synthFilterType) ? source.synthFilterType : fallback.synthFilterType,
@@ -1325,7 +1399,9 @@ function writeStoredSession() {
       chopGate: voice.chopGate,
       sliceCount: voice.sliceCount,
       synthWave: voice.synthWave,
+      synthWaveShape: voice.synthWaveShape,
       synthTuneMidi: voice.synthTuneMidi,
+      synthLevel: voice.synthLevel,
       synthNoiseMix: voice.synthNoiseMix,
       synthFoldAmount: voice.synthFoldAmount,
       synthFilterType: voice.synthFilterType,
@@ -2010,7 +2086,9 @@ function getTrackPlaybackSettings(track) {
     chopGate: voice.chopGate,
     sliceCount: voice.sliceCount,
     synthWave: voice.synthWave,
+    synthWaveShape: voice.synthWaveShape,
     synthTuneMidi: voice.synthTuneMidi,
+    synthLevel: voice.synthLevel,
     synthNoiseMix: voice.synthNoiseMix,
     synthFoldAmount: voice.synthFoldAmount,
     synthFilterType: voice.synthFilterType,
@@ -3341,7 +3419,11 @@ function syncUi() {
   ui.chopGateValue.textContent = `${voice.chopGate}%`;
   ui.reverse.checked = voice.reverse;
   ui.synthWave.value = voice.synthWave;
+  ui.synthWaveShape.value = String(voice.synthWaveShape);
+  ui.synthWaveShapeValue.textContent = `${Math.round(voice.synthWaveShape)}%`;
   ui.synthTune.value = String(voice.synthTuneMidi);
+  ui.synthLevel.value = String(voice.synthLevel);
+  ui.synthLevelValue.textContent = `${Math.round(voice.synthLevel)}%`;
   ui.synthNoiseMixKnob.style.setProperty("--rotary-angle", `${getRotaryAngleFromPercent(voice.synthNoiseMix)}deg`);
   ui.synthNoiseMixValue.textContent = `${Math.round(voice.synthNoiseMix)}%`;
   ui.synthFold.value = String(voice.synthFoldAmount);
@@ -3676,7 +3758,9 @@ ui.pitch.addEventListener("input", () => updateSelectedVoice({ pitch: Number(ui.
 ui.chopGate.addEventListener("input", () => updateSelectedVoice({ chopGate: Number(ui.chopGate.value) }));
 ui.reverse.addEventListener("change", () => updateSelectedVoice({ reverse: ui.reverse.checked }));
 ui.synthWave.addEventListener("change", () => updateSelectedVoice({ synthWave: ui.synthWave.value }));
+ui.synthWaveShape.addEventListener("input", () => updateSelectedVoice({ synthWaveShape: Number(ui.synthWaveShape.value) }));
 ui.synthTune.addEventListener("change", () => updateSelectedVoice({ synthTuneMidi: Number(ui.synthTune.value) }));
+ui.synthLevel.addEventListener("input", () => updateSelectedVoice({ synthLevel: Number(ui.synthLevel.value) }));
 ui.synthFold.addEventListener("input", () => updateSelectedVoice({ synthFoldAmount: Number(ui.synthFold.value) }));
 ui.synthFilterType.addEventListener("change", () => updateSelectedVoice({ synthFilterType: ui.synthFilterType.value }));
 ui.synthFilterFrequency.addEventListener("input", () => updateSelectedVoice({ synthFilterFrequency: Number(ui.synthFilterFrequency.value) }));
