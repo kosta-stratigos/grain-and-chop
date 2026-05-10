@@ -329,45 +329,61 @@
       <section class="overlay-panel" role="dialog" aria-modal="true" aria-labelledby="track-settings-title">
         <div class="panel-head overlay-head">
           <div class="panel-head-copy">
-            <h2 id="track-settings-title">Track Settings</h2>
+            <h2 id="track-settings-title">Pattern Settings</h2>
             <p id="track-settings-track"></p>
           </div>
           <button id="track-settings-close" type="button">Close</button>
         </div>
         <div id="track-settings-group" class="control-group sequence-settings-group track-settings-overlay-group">
-          <div class="sequence-settings-stack">
-            <label class="compact-field">
-              Voice
-              <select id="pattern-voice-select">
-                <option value="0">Voice 1</option>
-                <option value="1">Voice 2</option>
-                <option value="2">Voice 3</option>
-                <option value="3">Voice 4</option>
+          <div class="sequence-settings-stack pattern-settings-stack">
+            <label class="compact-field span-2">
+              Pattern
+              <select id="track-pattern-select">
+                <option value="0">Pattern 1</option>
+                <option value="1">Pattern 2</option>
+                <option value="2">Pattern 3</option>
+                <option value="3">Pattern 4</option>
               </select>
             </label>
-            <label class="compact-field">
-              Steps / Bar
-              <div class="slider-row">
-                <input id="track-steps" type="range" min="1" max="32" value="16" />
-                <span id="track-steps-value" class="value-pill">16</span>
+            <section class="control-group nested-control-group track-step-fill-group" aria-labelledby="track-sequencer-title">
+              <div class="control-group-head">
+                <h3 id="track-sequencer-title">Sequencer</h3>
               </div>
-            </label>
-            <label class="compact-field">
-              Playback Mode
-              <select id="track-playback-mode">
-                <option value="forward">Forward</option>
-                <option value="ping-pong">Ping Pong</option>
-                <option value="random">Random</option>
-                <option value="reverse">Reverse</option>
-              </select>
-            </label>
-            <label class="compact-field">
-              Step Probability
-              <div class="slider-row">
-                <input id="track-step-probability" type="range" min="0" max="100" value="100" />
-                <span id="track-step-probability-value" class="value-pill">100%</span>
+              <div class="control-grid track-settings-grid">
+                <label class="compact-field">
+                  Voice
+                  <select id="pattern-voice-select">
+                    <option value="0">Voice 1</option>
+                    <option value="1">Voice 2</option>
+                    <option value="2">Voice 3</option>
+                    <option value="3">Voice 4</option>
+                  </select>
+                </label>
+                <label class="compact-field">
+                  Steps / Bar
+                  <div class="slider-row">
+                    <input id="track-steps" type="range" min="1" max="32" value="16" />
+                    <span id="track-steps-value" class="value-pill">16</span>
+                  </div>
+                </label>
+                <label class="compact-field">
+                  Playback Mode
+                  <select id="track-playback-mode">
+                    <option value="forward">Forward</option>
+                    <option value="ping-pong">Ping Pong</option>
+                    <option value="random">Random</option>
+                    <option value="reverse">Reverse</option>
+                  </select>
+                </label>
+                <label class="compact-field">
+                  Step Probability
+                  <div class="slider-row">
+                    <input id="track-step-probability" type="range" min="0" max="100" value="100" />
+                    <span id="track-step-probability-value" class="value-pill">100%</span>
+                  </div>
+                </label>
               </div>
-            </label>
+            </section>
             <section class="control-group nested-control-group track-step-fill-group" aria-labelledby="track-envelope-title">
               <div class="control-group-head">
                 <h3 id="track-envelope-title">ADSR Envelope</h3>

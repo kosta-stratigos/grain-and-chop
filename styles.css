@@ -1048,7 +1048,7 @@ input[type="range"]::-moz-range-thumb {
 .overlay-panel {
   position: relative;
   z-index: 1;
-  width: min(480px, calc(100vw - 32px));
+  width: min(720px, calc(100vw - 32px));
   padding: 20px;
   border: 1px solid var(--line);
   border-radius: var(--pane-radius);
@@ -1072,6 +1072,17 @@ input[type="range"]::-moz-range-thumb {
 
 .track-settings-overlay-group {
   padding: 14px;
+}
+
+.pattern-settings-stack {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.pattern-settings-stack > .span-2,
+.pattern-settings-stack > .control-group {
+  min-width: 0;
 }
 
 .track-step-fill-group {
@@ -1393,6 +1404,10 @@ input[type="range"]::-moz-range-thumb {
   }
 
   .track-settings-stack {
+    grid-template-columns: 1fr;
+  }
+
+  .pattern-settings-stack {
     grid-template-columns: 1fr;
   }
 
