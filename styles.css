@@ -79,7 +79,7 @@ select {
 .hero-copy {
   display: flex;
   align-items: baseline;
-  gap: 12px;
+  gap: 8px;
   min-width: 0;
 }
 
@@ -1401,7 +1401,7 @@ input[type="range"]::-moz-range-thumb {
 
   .hero-copy {
     display: grid;
-    gap: 4px;
+    gap: 3px;
   }
 
   .subhead {

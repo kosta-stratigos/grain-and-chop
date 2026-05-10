@@ -1293,6 +1293,7 @@ const state = {
     trackIndex: null,
     cellIndex: null,
   },
+  currentTransportStep: -1,
   currentSampleName: "",
   mixVolume: 0.9,
 };
@@ -3217,6 +3218,7 @@ function drawWaveform() {
 }
 
 function updateCurrentStep(activeStep = -1) {
+  state.currentTransportStep = activeStep;
   ui.patternGrid.querySelectorAll(".step").forEach((button) => {
     if (activeStep < 0) {
       button.classList.remove("current");
@@ -3541,7 +3543,7 @@ function renderSequencePatternSwitcher() {
   });
 }
 
-function renderPattern(activeStep = -1) {
+function renderPattern(activeStep = state.currentTransportStep) {
   ui.patternGrid.innerHTML = "";
   state.tracks.forEach((track, trackIndex) => {
     const activePattern = getTrackPattern(track);
