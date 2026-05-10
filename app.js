@@ -2178,7 +2178,16 @@ function getTrackPlaybackSettings(track) {
   const activePattern = getTrackPattern(track);
   return {
     ...track,
-    ...activePattern,
+    patternId: activePattern.id,
+    patternName: activePattern.name,
+    stepCount: activePattern.stepCount,
+    playbackMode: activePattern.playbackMode,
+    stepProbability: activePattern.stepProbability,
+    envelope: activePattern.envelope,
+    stepFill: activePattern.stepFill,
+    pitchFill: activePattern.pitchFill,
+    stepPitches: activePattern.stepPitches,
+    pattern: activePattern.pattern,
     mode: voice.mode,
     reverse: voice.reverse,
     grainLocation: voice.grainLocation,
