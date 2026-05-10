@@ -1014,6 +1014,33 @@ input[type="range"]::-moz-range-thumb {
   grid-template-columns: 58px repeat(4, minmax(0, 1fr));
 }
 
+.pattern-switcher-matrix .effects-matrix-header {
+  margin-left: 36px;
+}
+
+.pattern-switcher-matrix .effects-matrix-row {
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+}
+
+.pattern-switcher-matrix .effects-row {
+  grid-template-columns: 36px repeat(8, minmax(0, 1fr));
+}
+
+.pattern-switcher-matrix .effects-row-label,
+.pattern-switcher-matrix .effects-track-head {
+  font-size: 0.68rem;
+}
+
+.pattern-switcher-button:disabled {
+  opacity: 0.28;
+  cursor: default;
+}
+
+.pattern-switcher-button:disabled:hover {
+  transform: none;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
 .effects-row-label {
   justify-items: start;
   padding-left: 0;

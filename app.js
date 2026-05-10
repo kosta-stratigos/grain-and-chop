@@ -124,6 +124,7 @@ const ui = {
   mixVolumeValue: document.querySelector("#mix-volume-value"),
   mixerGrid: document.querySelector("#mixer-grid"),
   patternGrid: document.querySelector("#pattern-grid"),
+  sequencePatternSwitcher: document.querySelector("#sequence-pattern-switcher"),
 };
 
 const STORAGE_KEY = "granular-chop-lab:session";
@@ -139,7 +140,7 @@ const STEPS_PER_BAR_MAX = 32;
 const BASE_GRID_STEPS = 32 * SEQUENCE_BAR_COUNT;
 const MAX_PATTERN_CELLS = STEPS_PER_BAR_MAX * SEQUENCE_BAR_COUNT;
 const TRACK_COUNT = 4;
-const TRACK_PATTERN_COUNT = 4;
+const TRACK_PATTERN_COUNT = 8;
 const PITCH_LANE_NOTE_COUNT = 60;
 const PITCH_LANE_START_MIDI = 24;
 const PITCH_LANE_REFERENCE_MIDI = 60;
@@ -321,6 +322,7 @@ function createTrackPattern(id = 1, seedOffset = 0) {
   return {
     id,
     name: `Pattern ${id}`,
+    isDefined: id === 1,
     stepCount: 16,
     playbackMode: "forward",
     stepProbability: 100,
@@ -372,10 +374,12 @@ function normalizeTrackEnvelope(source = {}, fallback = createDefaultTrackEnvelo
 }
 
 function normalizeTrackPattern(index, source = {}, fallback = createTrackPattern(index + 1)) {
+  const hasLegacyPatternData = Array.isArray(source.pattern) || Array.isArray(source.stepPitches) || source.stepCount != null;
   return {
     ...fallback,
     id: Number.isFinite(Number(source.id)) ? Number(source.id) : fallback.id,
     name: typeof source.name === "string" ? source.name : fallback.name,
+    isDefined: Boolean(source.isDefined ?? hasLegacyPatternData ?? fallback.isDefined),
     stepCount: Math.max(1, Math.min(32, Number(source.stepCount) || fallback.stepCount)),
     playbackMode: TRACK_PLAYBACK_MODES.includes(source.playbackMode) ? source.playbackMode : fallback.playbackMode,
     stepProbability: Math.max(
@@ -1478,6 +1482,7 @@ function writeStoredSession() {
       patterns: track.patterns.map((pattern) => ({
         id: pattern.id,
         name: pattern.name,
+        isDefined: pattern.isDefined,
         stepCount: pattern.stepCount,
         playbackMode: pattern.playbackMode,
         stepProbability: pattern.stepProbability,
@@ -3447,6 +3452,71 @@ function renderEffectsMatrix() {
   });
 }
 
+function activateTrackPattern(trackIndex, patternIndex, { selectTrack = false, markDefined = false } = {}) {
+  const track = state.tracks[trackIndex];
+  if (!track) return;
+  const safePatternIndex = Math.max(0, Math.min(TRACK_PATTERN_COUNT - 1, Number(patternIndex) || 0));
+  if (selectTrack) state.selectedTrackIndex = trackIndex;
+  track.activePatternIndex = safePatternIndex;
+  const activePattern = getTrackPattern(track);
+  if (markDefined) activePattern.isDefined = true;
+  resetTrackPlaybackState(trackIndex);
+  if (state.pitchStepSelection.trackIndex === trackIndex) {
+    state.pitchStepSelection = { trackIndex: null, cellIndex: null };
+  }
+  syncUi();
+  renderTrackSelector();
+  renderEffectsMatrix();
+  renderSequencePatternSwitcher();
+  renderMixer();
+  renderPattern();
+  renderPitchLanes();
+  drawWaveform();
+  writeStoredSession();
+}
+
+function renderSequencePatternSwitcher() {
+  if (!ui.sequencePatternSwitcher) return;
+  ui.sequencePatternSwitcher.innerHTML = "";
+
+  const headerRow = document.createElement("div");
+  headerRow.className = "effects-matrix-row effects-matrix-header";
+  for (let patternIndex = 0; patternIndex < TRACK_PATTERN_COUNT; patternIndex += 1) {
+    const headerCell = document.createElement("div");
+    headerCell.className = "effects-axis-label effects-track-head";
+    headerCell.textContent = `P${patternIndex + 1}`;
+    headerRow.append(headerCell);
+  }
+  ui.sequencePatternSwitcher.append(headerRow);
+
+  state.tracks.forEach((track, trackIndex) => {
+    const row = document.createElement("div");
+    row.className = "effects-matrix-row effects-row";
+
+    const labelCell = document.createElement("div");
+    labelCell.className = "effects-axis-label effects-row-label";
+    labelCell.textContent = `T${track.id}`;
+    row.append(labelCell);
+
+    track.patterns.forEach((pattern, patternIndex) => {
+      const button = document.createElement("button");
+      const isActive = track.activePatternIndex === patternIndex;
+      button.className = `effects-cell effects-toggle pattern-switcher-button${isActive ? " active" : ""}${trackIndex === state.selectedTrackIndex ? " selected" : ""}`;
+      button.textContent = pattern.isDefined ? (isActive ? "Active" : "Ready") : "—";
+      button.disabled = !pattern.isDefined;
+      button.title = `${track.name} ${pattern.name}${pattern.isDefined ? "" : " unavailable"}`;
+      applyTrackColor(button, track.color);
+      button.addEventListener("click", () => {
+        if (!pattern.isDefined) return;
+        activateTrackPattern(trackIndex, patternIndex, { selectTrack: true });
+      });
+      row.append(button);
+    });
+
+    ui.sequencePatternSwitcher.append(row);
+  });
+}
+
 function renderPattern(activeStep = -1) {
   ui.patternGrid.innerHTML = "";
   state.tracks.forEach((track, trackIndex) => {
@@ -3571,6 +3641,7 @@ function syncUi() {
   ui.mixVolume.value = String(Math.round(state.mixVolume * 100));
   ui.mixVolumeValue.textContent = `${Math.round(state.mixVolume * 100)}%`;
   renderPitchLanes();
+  renderSequencePatternSwitcher();
   syncTransportButton();
   syncTrackSettingsOverlay();
   syncFilterOverlay();
@@ -3597,6 +3668,7 @@ function updateSelectedTrack(patch) {
   syncUi();
   renderTrackSelector();
   renderEffectsMatrix();
+  renderSequencePatternSwitcher();
   renderMixer();
   renderPattern();
   drawWaveform();
@@ -3606,6 +3678,7 @@ function updateSelectedTrack(patch) {
 function updateSelectedTrackPattern(patch) {
   const track = getSelectedTrack();
   const activePattern = getTrackPattern(track);
+  activePattern.isDefined = true;
   Object.assign(activePattern, patch);
   if ("stepCount" in patch || "playbackMode" in patch) resetTrackPlaybackState(state.selectedTrackIndex);
   if ("stepFill" in patch) {
@@ -3619,6 +3692,7 @@ function updateSelectedTrackPattern(patch) {
   syncUi();
   renderTrackSelector();
   renderEffectsMatrix();
+  renderSequencePatternSwitcher();
   renderMixer();
   renderPattern();
   drawWaveform();
@@ -3819,7 +3893,7 @@ ui.patternVoiceSelect.addEventListener("change", () => {
   updateSelectedTrack({ voiceIndex: Number(ui.patternVoiceSelect.value) });
 });
 ui.trackPatternSelect.addEventListener("change", () => {
-  updateSelectedTrack({ activePatternIndex: Number(ui.trackPatternSelect.value) });
+  activateTrackPattern(state.selectedTrackIndex, Number(ui.trackPatternSelect.value), { markDefined: true });
 });
 ui.trackStepFillType.addEventListener("change", () => {
   const nextType = ui.trackStepFillType.value;
@@ -4100,6 +4174,7 @@ renderSampleLibrary();
 syncSampleBrowserOverlay();
 renderTrackSelector();
 renderEffectsMatrix();
+renderSequencePatternSwitcher();
 renderMixer();
 renderPattern();
 refreshRangeFills();
