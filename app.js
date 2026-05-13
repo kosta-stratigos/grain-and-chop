@@ -139,7 +139,8 @@ const SAMPLE_LIBRARY = [
 ];
 const DEFAULT_PATTERN_BAR_COUNT = 2;
 const MAX_PATTERN_BARS = 8;
-const SEQUENCER_INLINE_BAR_LIMIT = 4;
+const SEQUENCER_BARS_PER_ROW = 2;
+const SEQUENCER_ROW_COUNT = MAX_PATTERN_BARS / SEQUENCER_BARS_PER_ROW;
 const BASE_GRID_STEPS_PER_BAR = 32;
 const STEPS_PER_BAR_MAX = 32;
 const BASE_GRID_STEPS = BASE_GRID_STEPS_PER_BAR * MAX_PATTERN_BARS;
@@ -3587,8 +3588,8 @@ function renderPattern(activeStep = state.currentTransportStep) {
 
     const laneShell = document.createElement("div");
     laneShell.className = "pattern-step-lanes";
-    const laneCount = 2;
-    const cellsPerLane = stepsPerBar * SEQUENCER_INLINE_BAR_LIMIT;
+    const laneCount = SEQUENCER_ROW_COUNT;
+    const cellsPerLane = stepsPerBar * SEQUENCER_BARS_PER_ROW;
 
     for (let laneIndex = 0; laneIndex < laneCount; laneIndex += 1) {
       const lane = document.createElement("div");

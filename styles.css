@@ -1326,7 +1326,7 @@ input[type="range"]::-moz-range-thumb {
 
 .pattern-step-lanes {
   display: grid;
-  gap: 4px;
+  gap: 3px;
   min-width: 0;
 }
 
