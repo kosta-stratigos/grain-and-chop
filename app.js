@@ -3570,10 +3570,9 @@ function renderPattern(activeStep = state.currentTransportStep) {
   ui.patternGrid.innerHTML = "";
   state.tracks.forEach((track, trackIndex) => {
     const activePattern = getTrackPattern(track);
-    const barCount = getTrackBarCount(track);
-    const usesSplitLanes = barCount > SEQUENCER_INLINE_BAR_LIMIT;
     const stepsPerBar = Math.max(1, Math.min(STEPS_PER_BAR_MAX, activePattern.stepCount ?? 16));
     const visibleCellCount = getTrackVisibleCellCount(track);
+    const totalVisibleSlots = Math.min(MAX_PATTERN_CELLS, stepsPerBar * MAX_PATTERN_BARS);
     const row = document.createElement("div");
     row.className = "pattern-row";
 
@@ -3588,26 +3587,36 @@ function renderPattern(activeStep = state.currentTransportStep) {
 
     const laneShell = document.createElement("div");
     laneShell.className = "pattern-step-lanes";
-    const laneCount = usesSplitLanes ? 2 : 1;
-    const cellsPerLane = usesSplitLanes ? stepsPerBar * SEQUENCER_INLINE_BAR_LIMIT : visibleCellCount;
+    const laneCount = 2;
+    const cellsPerLane = stepsPerBar * SEQUENCER_INLINE_BAR_LIMIT;
 
     for (let laneIndex = 0; laneIndex < laneCount; laneIndex += 1) {
       const lane = document.createElement("div");
       lane.className = "pattern-step-lane";
       lane.style.gridTemplateColumns = `repeat(${cellsPerLane}, minmax(32px, 1fr))`;
       const laneStart = laneIndex * cellsPerLane;
-      const laneEnd = Math.min(visibleCellCount, laneStart + cellsPerLane);
+      const laneEnd = Math.min(totalVisibleSlots, laneStart + cellsPerLane);
 
       for (let cellIndex = laneStart; cellIndex < laneEnd; cellIndex += 1) {
+        if (cellIndex >= visibleCellCount) {
+          const filler = document.createElement("div");
+          filler.className = "step-placeholder";
+          lane.append(filler);
+          continue;
+        }
+
         const enabled = activePattern.pattern[cellIndex];
         const pitchSelected = state.pitchStepSelection.trackIndex === trackIndex && state.pitchStepSelection.cellIndex === cellIndex;
+        const isBarStart = cellIndex % Math.max(1, activePattern.stepCount) === 0;
         const stepButton = document.createElement("button");
-        stepButton.className = `step${enabled ? " active" : ""}${pitchSelected ? " pitch-target" : ""}${usesSplitLanes ? " compact" : ""}`;
+        stepButton.className = `step compact${enabled ? " active" : ""}${pitchSelected ? " pitch-target" : ""}`;
         applyTrackColor(stepButton, track.color);
         stepButton.dataset.trackIndex = String(trackIndex);
         stepButton.dataset.cellIndex = String(cellIndex);
-        if (cellIndex > 0 && cellIndex % Math.max(1, activePattern.stepCount) === 0) stepButton.classList.add("bar-start");
-        stepButton.textContent = String(cellIndex + 1);
+        if (cellIndex > 0 && isBarStart) stepButton.classList.add("bar-start");
+        stepButton.textContent = isBarStart ? "1" : "";
+        stepButton.title = `Bar ${Math.floor(cellIndex / Math.max(1, activePattern.stepCount)) + 1}, Step ${(cellIndex % Math.max(1, activePattern.stepCount)) + 1}`;
+        stepButton.setAttribute("aria-label", stepButton.title);
         stepButton.addEventListener("click", (event) => {
           state.selectedTrackIndex = trackIndex;
           if (event.shiftKey && activePattern.pattern[cellIndex]) {
@@ -3644,12 +3653,10 @@ function renderPattern(activeStep = state.currentTransportStep) {
         lane.append(stepButton);
       }
 
-      if (usesSplitLanes) {
-        for (let placeholderCount = laneEnd - laneStart; placeholderCount < cellsPerLane; placeholderCount += 1) {
-          const filler = document.createElement("div");
-          filler.className = "step-placeholder";
-          lane.append(filler);
-        }
+      for (let placeholderCount = laneEnd - laneStart; placeholderCount < cellsPerLane; placeholderCount += 1) {
+        const filler = document.createElement("div");
+        filler.className = "step-placeholder";
+        lane.append(filler);
       }
 
       laneShell.append(lane);
