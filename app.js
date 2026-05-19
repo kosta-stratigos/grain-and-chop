@@ -19,7 +19,6 @@ const ui = {
   sampleSettingsGroup: document.querySelector("#sample-settings-group"),
   voicePlaybackSettingsGroup: document.querySelector("#voice-playback-settings-group"),
   synthSettingsGroup: document.querySelector("#synth-settings-group"),
-  workspaceTitle: document.querySelector("#workspace-title"),
   workspaceTabs: Array.from(document.querySelectorAll("[data-workspace-tab]")),
   workspacePanels: Array.from(document.querySelectorAll("[data-workspace-panel]")),
   pitchLanes: document.querySelector("#pitch-lanes"),
@@ -2408,15 +2407,7 @@ function formatFilterQ(value) {
   return clampFilterQ(value).toFixed(1);
 }
 
-function formatWorkspaceTitle(tabKey = "voices") {
-  if (tabKey === "track-effects") return "Track Effects";
-  if (tabKey === "pattern-switcher") return "Pattern Switcher";
-  if (tabKey === "composer") return "Composer";
-  return "Voices";
-}
-
 function syncWorkspaceTabs() {
-  if (ui.workspaceTitle) ui.workspaceTitle.textContent = formatWorkspaceTitle(state.workspaceTab);
   ui.workspaceTabs.forEach((button) => {
     const isActive = button.dataset.workspaceTab === state.workspaceTab;
     button.classList.toggle("active", isActive);
